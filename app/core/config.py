@@ -6,7 +6,7 @@ from pathlib import Path
 
 class Settings(BaseSettings):
     # Database
-    DATABASE_URL: str = "postgresql://user:password@localhost/personalcfo_db"
+    DATABASE_URL: str = "sqlite:///./personalcfo.db"
     
     # JWT
     SECRET_KEY: str = "your-secret-key-here"

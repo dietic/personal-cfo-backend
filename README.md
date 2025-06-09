@@ -8,12 +8,16 @@
 - ✅ **Authentication System**: JWT-based auth with user registration/login
 - ✅ **Card Management**: CRUD operations for credit/debit cards
 - ✅ **Transaction Management**: CRUD with AI categorization support
+- ✅ **Enhanced Statement Processing**: Separate extraction/categorization workflow with status tracking
+- ✅ **Category Management**: Full CRUD with keyword-based auto-categorization
+- ✅ **Hybrid Categorization**: AI + keyword matching with confidence scoring
 - ✅ **Budget Tracking**: Budget creation with spending alerts
-- ✅ **AI Integration**: OpenAI service for transaction categorization
-- ✅ **Statement Processing**: PDF/CSV upload and parsing
+- ✅ **AI Integration**: OpenAI service for transaction categorization and batch processing
 - ✅ **Analytics**: Spending analysis and trend tracking
-- ✅ **API Documentation**: FastAPI auto-generated docs
-- ✅ **Database Migrations**: Alembic setup with initial schema
+- ✅ **API Documentation**: FastAPI auto-generated docs with comprehensive endpoints
+- ✅ **Database Migrations**: Alembic setup with enhanced schema
+- ✅ **Status Polling**: Real-time processing status for frontend integration
+- ✅ **Retry Mechanism**: Robust error handling with automatic retry capabilities
 
 ### 🚧 In Progress / Pending
 
@@ -71,11 +75,14 @@ PersonalCFO is a personal finance management platform with a strong focus on:
 
 - View card details by ID
 
-### 3. **Statement Uploading**
+### 3. **Enhanced Statement Processing**
 
-- PDF or CSV upload endpoint
-- Future: Email integration (Gmail API or IMAP polling on date match)
-- Parse statements → Normalize transactions
+- **PDF upload with validation**: Users must have ≥5 categories before uploading
+- **Separate workflow steps**: Upload → Extract → Categorize → Complete
+- **Status polling**: Real-time status tracking for each processing step
+- **Hybrid categorization**: AI + keyword-based categorization with fallback
+- **Retry functionality**: Retry failed extraction or categorization steps
+- **Category management**: Full CRUD for user categories with keyword matching
 
 ### 4. **Transaction Management**
 
@@ -283,11 +290,28 @@ CORS_ORIGINS=["http://localhost:3000"]
 - `PUT /transactions/{transaction_id}` - Update transaction
 - `DELETE /transactions/{transaction_id}` - Delete transaction
 
-### Statements
+### Categories
 
-- `POST /statements/upload` - Upload PDF/CSV statement
+- `GET /categories/` - Get all user categories
+- `GET /categories/stats` - Get category usage statistics
+- `GET /categories/validate-minimum` - Check minimum category requirements
+- `POST /categories/` - Create new category
+- `PUT /categories/{category_id}` - Update category
+- `DELETE /categories/{category_id}` - Delete category
+- `POST /categories/create-defaults` - Create default categories for new users
+- `GET /categories/suggest/{merchant}` - Get AI/keyword categorization suggestions
+- `POST /categories/test-keywords` - Test keyword matching for debugging
+
+### Statements (Enhanced Processing)
+
+- `POST /statements/upload` - Upload PDF statement (requires 5+ categories)
 - `GET /statements` - List uploaded statements
-- `POST /statements/{statement_id}/process` - Process statement with AI analysis
+- `GET /statements/check-categories` - Check if user meets category requirements
+- `POST /statements/{statement_id}/extract` - Extract transactions from statement (Step 1)
+- `POST /statements/{statement_id}/categorize` - Categorize extracted transactions (Step 2) 
+- `GET /statements/{statement_id}/status` - Get detailed processing status (for polling)
+- `POST /statements/{statement_id}/retry` - Retry failed extraction or categorization
+- `POST /statements/{statement_id}/process` - Legacy: Full processing (deprecated)
 - `GET /statements/{statement_id}/insights` - Get AI insights for processed statement
 
 ### Budgets

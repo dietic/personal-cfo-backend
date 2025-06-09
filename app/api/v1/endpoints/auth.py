@@ -5,12 +5,12 @@ from datetime import timedelta
 from app.core.database import get_db
 from app.core.security import create_access_token
 from app.core.deps import get_current_user
-from app.schemas.user import UserCreate, UserLogin, User, Token
+from app.schemas.user import UserCreate, UserLogin, UserProfile, Token
 from app.services.user_service import UserService
 
 router = APIRouter()
 
-@router.post("/register", response_model=User)
+@router.post("/register", response_model=UserProfile)
 async def register(user_create: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
     user_service = UserService(db)
@@ -46,7 +46,7 @@ async def login(user_login: UserLogin, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/refresh", response_model=Token)
-async def refresh_token(current_user: User = Depends(get_current_user)):
+async def refresh_token(current_user: UserProfile = Depends(get_current_user)):
     """Refresh access token"""
     access_token_expires = timedelta(minutes=30)
     access_token = create_access_token(

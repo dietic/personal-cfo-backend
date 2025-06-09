@@ -1,13 +1,16 @@
 import pandas as pd
 import PyPDF2
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 import re
 from datetime import datetime
 import io
+import json
+import openai
+from app.core.config import settings
 
 class StatementParser:
     def __init__(self):
-        pass
+        self.client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
     
     def detect_currency(self, text: str, amount_str: str) -> str:
         """Detect currency from text and amount string"""
@@ -114,23 +117,127 @@ class StatementParser:
         except Exception as e:
             raise ValueError(f"Error parsing CSV: {str(e)}")
 
-    def parse_pdf_statement(self, file_content: bytes) -> List[Dict[str, Any]]:
-        """Parse PDF bank statement (basic implementation)"""
+    def parse_pdf_statement(self, file_content: bytes) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Parse PDF bank statement using ChatGPT for intelligent extraction"""
         try:
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
             text = ""
             
             for page in pdf_reader.pages:
-                text += page.extract_text()
+                text += page.extract_text() + "\n"
             
-            transactions = self._extract_transactions_from_text(text)
-            return transactions
+            # Use ChatGPT to extract transactions and statement period
+            transactions, statement_period = self._extract_transactions_with_ai(text)
+            return transactions, statement_period
             
         except Exception as e:
             raise ValueError(f"Error parsing PDF: {str(e)}")
 
-    def _extract_transactions_from_text(self, text: str) -> List[Dict[str, Any]]:
-        """Extract transactions from PDF text (basic pattern matching)"""
+    def _extract_transactions_with_ai(self, text: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Use ChatGPT to intelligently extract transactions and statement period from PDF text"""
+        prompt = f"""
+        You are an expert at analyzing bank statements. Extract all transactions and the statement period from this bank statement text.
+
+        Bank Statement Text:
+        {text}
+
+        Please extract:
+        1. All transactions with their details
+        2. The statement period (start and end dates)
+
+        Return a JSON object with this exact structure:
+        {{
+            "statement_period": {{
+                "start_date": "YYYY-MM-DD",
+                "end_date": "YYYY-MM-DD",
+                "month": "YYYY-MM"
+            }},
+            "transactions": [
+                {{
+                    "date": "YYYY-MM-DD",
+                    "merchant": "merchant name",
+                    "description": "transaction description",
+                    "amount": 123.45,
+                    "currency": "USD or PEN",
+                    "type": "debit or credit"
+                }}
+            ]
+        }}
+
+        Important guidelines:
+        - Extract ALL transactions, not just a sample
+        - Amounts should be positive numbers
+        - Currency should be "USD" if dollar symbol ($) is found, "PEN" if Sol symbol (S/.) is found
+        - Date format must be YYYY-MM-DD
+        - Be very careful with date parsing - look for context clues about date format
+        - For merchant names, clean up and normalize the text
+        - Include both debit and credit transactions
+        - If statement period is not explicitly stated, infer from transaction dates
+        """
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert financial document parser. Always respond with valid JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=4000
+            )
+            
+            content = response.choices[0].message.content
+            if content:
+                result = json.loads(content)
+                
+                # Extract transactions
+                transactions = []
+                for tx in result.get("transactions", []):
+                    try:
+                        # Parse and validate transaction date
+                        transaction_date = self._parse_date(tx.get("date", ""))
+                        
+                        # Validate required fields
+                        if (tx.get("merchant") and 
+                            tx.get("amount") and 
+                            float(tx.get("amount", 0)) > 0):
+                            
+                            transactions.append({
+                                'merchant': str(tx.get("merchant", "")).strip(),
+                                'amount': float(tx.get("amount", 0)),
+                                'currency': tx.get("currency", "USD"),
+                                'transaction_date': transaction_date,
+                                'description': str(tx.get("description", tx.get("merchant", ""))).strip(),
+                                'type': tx.get("type", "debit")
+                            })
+                    except (ValueError, TypeError):
+                        continue  # Skip invalid transactions
+                
+                # Extract statement period
+                statement_period = None
+                if result.get("statement_period"):
+                    period_data = result["statement_period"]
+                    statement_period = period_data.get("month")
+                
+                return transactions, statement_period
+            else:
+                raise ValueError("Empty response from AI")
+                
+        except json.JSONDecodeError as e:
+            # Fallback to basic parsing if JSON parsing fails
+            print(f"AI JSON parsing failed: {e}. Falling back to basic parsing.")
+            transactions = self._extract_transactions_from_text_fallback(text)
+            return transactions, None
+            
+        except Exception as e:
+            print(f"AI extraction failed: {e}. Falling back to basic parsing.")
+            transactions = self._extract_transactions_from_text_fallback(text)
+            return transactions, None
+
+    def _extract_transactions_from_text_fallback(self, text: str) -> List[Dict[str, Any]]:
+        """Fallback method for basic transaction extraction if AI fails"""
+    def _extract_transactions_from_text_fallback(self, text: str) -> List[Dict[str, Any]]:
+        """Fallback method for basic transaction extraction if AI fails"""
         transactions = []
         
         # Basic pattern to match transaction lines

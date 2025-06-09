@@ -83,6 +83,27 @@ def show_api_endpoints():
             "GET /api/v1/analytics/monthly-trends",
             "GET /api/v1/analytics/year-comparison"
         ],
+        "Categories": [
+            "GET /api/v1/categories/",
+            "GET /api/v1/categories/stats",
+            "GET /api/v1/categories/validate-minimum",
+            "POST /api/v1/categories/",
+            "PUT /api/v1/categories/{category_id}",
+            "DELETE /api/v1/categories/{category_id}",
+            "POST /api/v1/categories/create-defaults",
+            "GET /api/v1/categories/suggest/{merchant}",
+            "POST /api/v1/categories/test-keywords"
+        ],
+        "Enhanced Statements": [
+            "POST /api/v1/statements/upload",
+            "GET /api/v1/statements",
+            "GET /api/v1/statements/check-categories", 
+            "POST /api/v1/statements/{statement_id}/extract",
+            "POST /api/v1/statements/{statement_id}/categorize",
+            "GET /api/v1/statements/{statement_id}/status",
+            "POST /api/v1/statements/{statement_id}/retry",
+            "GET /api/v1/statements/{statement_id}/insights"
+        ],
         "AI Services": [
             "POST /api/v1/ai/categorize-transaction",
             "POST /api/v1/ai/analyze-spending",

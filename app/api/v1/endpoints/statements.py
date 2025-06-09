@@ -4,6 +4,7 @@ from typing import List, Optional
 import uuid
 import os
 import json
+# Fast processing endpoints for PersonalCFO
 from datetime import datetime, date
 
 from app.core.database import get_db
@@ -13,9 +14,24 @@ from app.models.user import User
 from app.models.statement import Statement
 from app.models.transaction import Transaction
 from app.models.card import Card
-from app.schemas.statement import StatementCreate, Statement as StatementSchema, StatementProcess, StatementProcessRequest
+from app.models.alert import Alert, AlertType, AlertSeverity
+from app.schemas.statement import (
+    StatementCreate, 
+    Statement as StatementSchema, 
+    StatementProcess, 
+    StatementProcessRequest,
+    StatementStatusResponse,
+    ExtractionRequest,
+    ExtractionResponse,
+    CategorizationRequest,
+    CategorizationResponse,
+    RetryRequest
+)
 from app.services.statement_parser import StatementParser
 from app.services.ai_service import AIService
+from app.services.enhanced_statement_service import EnhancedStatementService
+from app.services.category_service import CategoryService
+from app.core.exceptions import ValidationError, NotFoundError
 
 router = APIRouter()
 
@@ -26,12 +42,19 @@ async def upload_statement(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Upload a bank statement (PDF or CSV)"""
-    # Validate file type
-    if not file.filename.lower().endswith(('.pdf', '.csv')):
+    """Upload a bank statement (PDF only) - Enhanced with category validation"""
+    
+    # Validate user has minimum categories before upload
+    try:
+        EnhancedStatementService.validate_statement_upload(db, current_user.id)
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Validate file type - only PDF allowed
+    if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF and CSV files are supported"
+            detail="Only PDF files are supported"
         )
     
     # Create upload directory if it doesn't exist
@@ -137,8 +160,17 @@ async def process_statement(
         
         if statement.file_type == "csv":
             transactions_data = parser.parse_csv_statement(file_content)
+            detected_period = None
         else:  # pdf
-            transactions_data = parser.parse_pdf_statement(file_content)
+            transactions_data, detected_period = parser.parse_pdf_statement(file_content)
+            
+        # Use detected period if not provided by user
+        if detected_period and not request.statement_month:
+            try:
+                statement.statement_month = datetime.strptime(detected_period + "-01", "%Y-%m-%d").date()
+                request.statement_month = statement.statement_month
+            except ValueError:
+                pass  # Use user-provided or default to None
         
         # Get user's transaction history for AI analysis
         user_history = db.query(Transaction).join(Card).filter(
@@ -196,13 +228,92 @@ async def process_statement(
         statement.status = "processed"
         statement.is_processed = True
         statement.ai_insights = json.dumps(ai_insights)
+        
+        # Create alerts from AI insights
+        alerts_created = 0
+        
+        # Create alerts from the alerts section
+        for alert_data in ai_insights.get("alerts", []):
+            try:
+                # Map AI alert types to our enum
+                alert_type_mapping = {
+                    "unusual_spending": AlertType.UNUSUAL_SPENDING,
+                    "large_transaction": AlertType.LARGE_TRANSACTION,
+                    "new_merchant": AlertType.NEW_MERCHANT,
+                    "budget_exceeded": AlertType.BUDGET_EXCEEDED
+                }
+                
+                alert_type = alert_type_mapping.get(
+                    alert_data.get("type", "unusual_spending"),
+                    AlertType.UNUSUAL_SPENDING
+                )
+                
+                # Map severity
+                severity_mapping = {
+                    "high": AlertSeverity.HIGH,
+                    "medium": AlertSeverity.MEDIUM,
+                    "low": AlertSeverity.LOW
+                }
+                
+                severity = severity_mapping.get(
+                    alert_data.get("severity", "medium"),
+                    AlertSeverity.MEDIUM
+                )
+                
+                alert = Alert(
+                    user_id=current_user.id,
+                    statement_id=statement_id,
+                    alert_type=alert_type,
+                    severity=severity,
+                    title=alert_data.get("title", "Financial Alert"),
+                    description=alert_data.get("description", ""),
+                    criteria=json.dumps(alert_data.get("transaction_details", {}))
+                )
+                
+                db.add(alert)
+                alerts_created += 1
+            except Exception as e:
+                continue  # Skip problematic alerts
+        
+        # Create future monitoring alerts
+        for monitor_data in ai_insights.get("future_monitoring", []):
+            try:
+                alert_type_mapping = {
+                    "spending_limit": AlertType.SPENDING_LIMIT,
+                    "merchant_watch": AlertType.MERCHANT_WATCH,
+                    "category_budget": AlertType.CATEGORY_BUDGET
+                }
+                
+                alert_type = alert_type_mapping.get(
+                    monitor_data.get("alert_type", "spending_limit"),
+                    AlertType.SPENDING_LIMIT
+                )
+                
+                alert = Alert(
+                    user_id=current_user.id,
+                    statement_id=statement_id,
+                    alert_type=alert_type,
+                    severity=AlertSeverity.MEDIUM,
+                    title=f"Monitor: {monitor_data.get('alert_type', 'Spending')}",
+                    description=monitor_data.get("description", ""),
+                    criteria=monitor_data.get("criteria", ""),
+                    threshold=monitor_data.get("threshold"),
+                    frequency=monitor_data.get("frequency", "monthly")
+                )
+                
+                db.add(alert)
+                alerts_created += 1
+            except Exception as e:
+                continue  # Skip problematic monitoring alerts
+        
         db.commit()
         
         return StatementProcess(
             statement_id=statement_id,
             transactions_found=len(transactions_data),
             transactions_created=transactions_created,
-            ai_insights=ai_insights
+            ai_insights=ai_insights,
+            alerts_created=alerts_created
         )
         
     except Exception as e:
@@ -245,3 +356,113 @@ async def get_statement_insights(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error parsing insights data"
         )
+
+# Enhanced Statement Processing Endpoints
+
+@router.get("/{statement_id}/status", response_model=StatementStatusResponse)
+async def get_statement_status(
+    statement_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get detailed status for statement processing (for polling)"""
+    try:
+        status_data = EnhancedStatementService.get_statement_status(db, statement_id)
+        return status_data
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{statement_id}/extract", response_model=ExtractionResponse)
+async def extract_transactions(
+    statement_id: uuid.UUID,
+    request: ExtractionRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Extract transactions from uploaded statement (Step 1)"""
+    try:
+        result = EnhancedStatementService.extract_transactions(
+            db=db,
+            statement_id=statement_id,
+            card_id=request.card_id,
+            card_name=request.card_name,
+            statement_month=request.statement_month
+        )
+        return result
+    except (NotFoundError, ValidationError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
+
+
+@router.post("/{statement_id}/categorize", response_model=CategorizationResponse)
+async def categorize_transactions(
+    statement_id: uuid.UUID,
+    request: CategorizationRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Categorize extracted transactions (Step 2)"""
+    try:
+        result = EnhancedStatementService.categorize_transactions(
+            db=db,
+            statement_id=statement_id,
+            use_ai=request.use_ai,
+            use_keywords=request.use_keywords
+        )
+        return result
+    except (NotFoundError, ValidationError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Categorization failed: {str(e)}")
+
+
+@router.post("/{statement_id}/retry")
+async def retry_processing_step(
+    statement_id: uuid.UUID,
+    request: RetryRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Retry a failed extraction or categorization step"""
+    try:
+        if request.step == "extraction":
+            result = EnhancedStatementService.retry_step(
+                db=db,
+                statement_id=statement_id,
+                step="extraction"
+            )
+        elif request.step == "categorization":
+            result = EnhancedStatementService.retry_step(
+                db=db,
+                statement_id=statement_id,
+                step="categorization",
+                use_ai=True,
+                use_keywords=True
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Invalid step. Must be 'extraction' or 'categorization'")
+        
+        return result
+    except (NotFoundError, ValidationError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Retry failed: {str(e)}")
+
+
+@router.get("/check-categories")
+async def check_category_requirements(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Check if user meets category requirements for statement upload"""
+    is_valid = CategoryService.validate_minimum_categories(db=db, user_id=current_user.id)
+    count = CategoryService.get_category_count(db=db, user_id=current_user.id)
+    
+    return {
+        "can_upload": is_valid,
+        "current_categories": count,
+        "minimum_required": 5,
+        "message": "Ready to upload statements" if is_valid else f"Please create {5 - count} more categories before uploading statements"
+    }
