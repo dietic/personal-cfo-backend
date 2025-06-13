@@ -11,6 +11,7 @@ class Transaction(Base):
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     card_id = Column(GUID(), ForeignKey("cards.id"), nullable=False)
+    statement_id = Column(GUID(), ForeignKey("statements.id"), nullable=True)  # Link to originating statement
     merchant = Column(String, nullable=False)
     amount = Column(Numeric(10, 2), nullable=False)
     currency = Column(String(3), nullable=False, default="USD")  # USD, PEN, etc.
@@ -24,3 +25,4 @@ class Transaction(Base):
 
     # Relationships
     card = relationship("Card", back_populates="transactions")
+    statement = relationship("Statement", back_populates="transactions")

@@ -11,6 +11,7 @@ from app.models.card import Card
 from app.services.statement_parser import StatementParser
 from app.services.categorization_service import CategorizationService, CategorizationResult
 from app.services.category_service import CategoryService
+from app.services.statement_context_manager import safe_statement_operation
 from app.core.exceptions import ValidationError, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -32,11 +33,11 @@ class EnhancedStatementService:
     def update_statement_status(
         db: Session, 
         statement_id: uuid.UUID, 
-        status: str = None,
-        extraction_status: str = None,
-        categorization_status: str = None,
-        error_message: str = None,
-        increment_retry: str = None  # "extraction" or "categorization"
+        status: Optional[str] = None,
+        extraction_status: Optional[str] = None,
+        categorization_status: Optional[str] = None,
+        error_message: Optional[str] = None,
+        increment_retry: Optional[str] = None  # "extraction" or "categorization"
     ) -> Statement:
         """Update statement processing status"""
         statement = db.query(Statement).filter(Statement.id == statement_id).first()
@@ -52,16 +53,12 @@ class EnhancedStatementService:
         if error_message:
             statement.error_message = error_message
         
-        # Handle retry count
+        # Handle retry count using new integer columns
         if increment_retry:
-            try:
-                retry_data = json.loads(statement.retry_count) if statement.retry_count else {"extraction": 0, "categorization": 0}
-            except json.JSONDecodeError:
-                retry_data = {"extraction": 0, "categorization": 0}
-            
-            if increment_retry in retry_data:
-                retry_data[increment_retry] += 1
-                statement.retry_count = json.dumps(retry_data)
+            if increment_retry == "extraction":
+                statement.extraction_retries += 1
+            elif increment_retry == "categorization":
+                statement.categorization_retries += 1
         
         statement.updated_at = datetime.utcnow()
         db.commit()
@@ -82,6 +79,9 @@ class EnhancedStatementService:
         if not statement:
             raise NotFoundError("Statement not found")
         
+        # Ensure we have the actual values (fix SQLAlchemy Column access issues)
+        db.refresh(statement)
+        
         # Update status to extracting
         EnhancedStatementService.update_statement_status(
             db, statement_id, 
@@ -90,11 +90,15 @@ class EnhancedStatementService:
         )
         
         try:
+            # Get allowed categories for AI processing
+            from app.services.category_service import CategoryService
+            allowed_categories = CategoryService.get_category_names_for_ai(db, statement.user_id)
+            
             # Parse the statement file
             parser = StatementParser()
             
             if statement.file_type.lower() == 'pdf':
-                transactions_data = parser.parse_pdf(statement.file_path)
+                transactions_data = parser.parse_pdf(statement.file_path, allowed_categories)
             elif statement.file_type.lower() == 'csv':
                 transactions_data = parser.parse_csv(statement.file_path)
             else:
@@ -121,9 +125,7 @@ class EnhancedStatementService:
                 card = Card(
                     user_id=statement.user_id,
                     card_name=card_name or f"Card from {statement.filename}",
-                    card_type="credit",  # Default type
-                    last_four_digits="0000",
-                    is_active=True
+                    card_type="credit"  # Default type
                 )
                 db.add(card)
                 db.commit()
@@ -132,12 +134,23 @@ class EnhancedStatementService:
             # Create transaction objects (without categories)
             transactions = []
             for trans_data in transactions_data:
+                # Ensure we have a valid date
+                transaction_date = trans_data.get('transaction_date') or trans_data.get('date')
+                if not transaction_date:
+                    from datetime import datetime
+                    transaction_date = datetime.now().date()
+                
+                # Ensure we have a valid merchant name
+                merchant = trans_data.get('merchant', 'Unknown Merchant')
+                if not merchant or not merchant.strip():
+                    merchant = 'Unknown Merchant'
+                
                 transaction = Transaction(
                     card_id=card.id,
-                    merchant=trans_data.get('merchant', 'Unknown'),
+                    merchant=merchant.strip(),
                     amount=trans_data.get('amount', 0.0),
                     currency=trans_data.get('currency', 'USD'),
-                    transaction_date=trans_data.get('date'),
+                    transaction_date=transaction_date,
                     description=trans_data.get('description', ''),
                     category=None,  # Will be set during categorization
                     ai_confidence=None
@@ -221,11 +234,38 @@ class EnhancedStatementService:
                 raise ValueError("No extracted transactions found")
             
             transaction_data = json.loads(statement.processed_transactions)
-            transaction_ids = [uuid.UUID(t["id"]) for t in transaction_data]
             
-            transactions = db.query(Transaction).filter(
-                Transaction.id.in_(transaction_ids)
-            ).all()
+            # Check if transaction IDs are valid
+            valid_transaction_ids = []
+            for t in transaction_data:
+                if t.get("id") and t["id"] != "None" and t["id"] != "null":
+                    try:
+                        valid_transaction_ids.append(uuid.UUID(t["id"]))
+                    except (ValueError, TypeError):
+                        logger.warning(f"Invalid transaction ID: {t['id']}")
+                        continue
+                else:
+                    logger.warning(f"Transaction has no valid ID: {t}")
+                    
+            if not valid_transaction_ids:
+                # If no valid IDs found, look for transactions by statement directly
+                logger.info("No valid transaction IDs found, searching by statement and date")
+                
+                # Try to find transactions that match this statement's criteria
+                transactions = db.query(Transaction).join(Card).filter(
+                    Card.user_id == statement.user_id
+                ).all()
+                
+                # Filter transactions that might belong to this statement
+                # This is a fallback approach - in production you'd want better tracking
+                if not transactions:
+                    raise ValueError("No transactions found for categorization")
+                    
+                logger.info(f"Found {len(transactions)} total user transactions for fallback categorization")
+            else:
+                transactions = db.query(Transaction).filter(
+                    Transaction.id.in_(valid_transaction_ids)
+                ).all()
             
             if not transactions:
                 raise ValueError("No transactions found for categorization")

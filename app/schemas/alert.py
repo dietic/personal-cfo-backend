@@ -4,21 +4,8 @@ from datetime import datetime
 from enum import Enum
 import uuid
 
-
-class AlertType(str, Enum):
-    SPENDING_LIMIT = "spending_limit"
-    MERCHANT_WATCH = "merchant_watch"
-    CATEGORY_BUDGET = "category_budget"
-    UNUSUAL_SPENDING = "unusual_spending"
-    LARGE_TRANSACTION = "large_transaction"
-    NEW_MERCHANT = "new_merchant"
-    BUDGET_EXCEEDED = "budget_exceeded"
-
-
-class AlertSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
+# Import the enums from the model to ensure consistency
+from app.models.alert import AlertType, AlertSeverity
 
 
 class AlertBase(BaseModel):

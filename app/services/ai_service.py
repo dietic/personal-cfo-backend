@@ -442,3 +442,55 @@ class AIService:
                 "confidence": 0.0,
                 "reasoning": f"Error in categorization: {str(e)}"
             }
+    
+    async def extract_text_from_pdf(self, file_content: bytes) -> str:
+        """Extract text from PDF file content"""
+        try:
+            import PyPDF2
+            import io
+            
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+            text = ""
+            
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+            
+            if not text.strip():
+                raise ValueError("No text could be extracted from PDF")
+            
+            return text.strip()
+            
+        except Exception as e:
+            raise ValueError(f"Error extracting text from PDF: {str(e)}")
+    
+    async def process_statement_with_categorization(self, text_content: str, prompt: str) -> List[Dict[str, Any]]:
+        """Process statement text content with OpenAI using the provided prompt"""
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert financial document parser. Always respond with valid JSON arrays only. Do not include any additional text or explanations."},
+                    {"role": "user", "content": f"{prompt}\n\nDocument content:\n{text_content}"}
+                ],
+                temperature=0.1,
+                max_tokens=4000
+            )
+            
+            content = response.choices[0].message.content
+            if content:
+                # Try to parse as JSON
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError:
+                    # Try to extract JSON from response if there's extra text
+                    import re
+                    json_match = re.search(r'\[.*\]', content, re.DOTALL)
+                    if json_match:
+                        return json.loads(json_match.group())
+                    else:
+                        raise ValueError("Could not extract valid JSON from response")
+            else:
+                raise ValueError("Empty response from AI")
+                
+        except Exception as e:
+            raise ValueError(f"Failed to process statement with AI: {str(e)}")

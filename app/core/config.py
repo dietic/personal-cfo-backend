@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     
     # App Settings
     DEBUG: bool = True
-    CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3002"]
     
     class Config:
         # Use absolute path to .env file

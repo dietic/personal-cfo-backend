@@ -43,17 +43,19 @@ class CategoryService:
     
     @staticmethod
     def get_user_categories(db: Session, user_id: uuid.UUID, include_inactive: bool = False) -> List[Category]:
-        """Get all categories for a user"""
-        query = db.query(Category).filter(Category.user_id == user_id)
+        """Get all categories for a user (including system categories)"""
+        query = db.query(Category).filter(
+            (Category.user_id == user_id) | (Category.is_system == True)  # User categories OR system categories
+        )
         if not include_inactive:
             query = query.filter(Category.is_active == True)
         return query.order_by(Category.name).all()
     
     @staticmethod
     def get_category_count(db: Session, user_id: uuid.UUID) -> int:
-        """Get the number of active categories for a user"""
+        """Get the number of active categories for a user (including system categories)"""
         return db.query(Category).filter(
-            Category.user_id == user_id,
+            (Category.user_id == user_id) | (Category.is_system == True),  # User categories OR system categories
             Category.is_active == True
         ).count()
     
@@ -169,13 +171,19 @@ class CategoryService:
                 continue
             
             try:
-                keywords = json.loads(category.keywords)
-            except json.JSONDecodeError:
+                # Handle both string (JSON) and list formats
+                if isinstance(category.keywords, str):
+                    keywords = json.loads(category.keywords)
+                elif isinstance(category.keywords, list):
+                    keywords = category.keywords
+                else:
+                    continue
+            except (json.JSONDecodeError, TypeError):
                 continue
             
             matched_keywords = []
             for keyword in keywords:
-                if keyword.lower() in text_to_match:
+                if isinstance(keyword, str) and keyword.lower() in text_to_match:
                     matched_keywords.append(keyword)
             
             if matched_keywords:
@@ -199,7 +207,7 @@ class CategoryService:
     
     @staticmethod
     def validate_minimum_categories(db: Session, user_id: uuid.UUID) -> bool:
-        """Check if user has at least 5 active categories"""
+        """Check if user has at least 5 active categories (including system categories)"""
         count = CategoryService.get_category_count(db, user_id)
         return count >= 5
     
@@ -231,3 +239,15 @@ class CategoryService:
             }
         
         return stats
+    
+    @staticmethod
+    def get_category_names_for_ai(db: Session, user_id: uuid.UUID) -> List[str]:
+        """Get list of category names for AI processing (including system categories)"""
+        categories = CategoryService.get_user_categories(db, user_id, include_inactive=False)
+        category_names = [category.name for category in categories]
+        
+        # Add "Uncategorized" as fallback option
+        if "Uncategorized" not in category_names:
+            category_names.append("Uncategorized")
+            
+        return category_names

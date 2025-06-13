@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime, date
 import uuid
@@ -57,6 +57,48 @@ class ExtractionRequest(BaseModel):
     card_id: Optional[uuid.UUID] = None
     card_name: Optional[str] = None
     statement_month: Optional[date] = None
+
+    @validator('statement_month', pre=True)
+    def validate_statement_month(cls, v):
+        if v is None or v == "":
+            return None
+        
+        if isinstance(v, date):
+            return v
+            
+        if isinstance(v, str):
+            # Try to parse different date formats
+            try:
+                # Try YYYY-MM-DD format
+                if len(v) == 10 and v.count('-') == 2:
+                    return datetime.strptime(v, '%Y-%m-%d').date()
+                # Try YYYY-MM format (add day 01)
+                elif len(v) == 7 and v.count('-') == 1:
+                    return datetime.strptime(f"{v}-01", '%Y-%m-%d').date()
+                else:
+                    # Handle month names
+                    month_names = {
+                        'january': 1, 'february': 2, 'march': 3, 'april': 4,
+                        'may': 5, 'june': 6, 'july': 7, 'august': 8,
+                        'september': 9, 'october': 10, 'november': 11, 'december': 12,
+                        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
+                        'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
+                        'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+                    }
+                    month_name = v.lower().strip()
+                    if month_name in month_names:
+                        current_year = datetime.now().year
+                        month_number = month_names[month_name]
+                        return date(current_year, month_number, 1)
+                    else:
+                        raise ValueError(f"Invalid date format: '{v}'. Expected formats: YYYY-MM-DD, YYYY-MM, or month name (e.g., 'may', 'january')")
+            except ValueError as e:
+                if "Invalid date format" in str(e):
+                    raise e
+                else:
+                    raise ValueError(f"Invalid date format: '{v}'. Expected formats: YYYY-MM-DD, YYYY-MM, or month name (e.g., 'may', 'january')")
+        
+        raise ValueError(f"Invalid date format: '{v}'. Expected string or date object")
 
 
 class ExtractionResponse(BaseModel):

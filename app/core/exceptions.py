@@ -43,3 +43,8 @@ class ExternalServiceError(BaseAppException):
 class DatabaseError(BaseAppException):
     """Raised when database operations fail"""
     pass
+
+
+class ProcessingError(BaseAppException):
+    """Raised when processing operations fail"""
+    pass
