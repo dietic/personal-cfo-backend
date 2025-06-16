@@ -35,18 +35,10 @@ class Alert(Base):
     alert_type = Column(Enum(AlertType), nullable=False)
     severity = Column(Enum(AlertSeverity), nullable=False, default=AlertSeverity.MEDIUM)
     title = Column(String, nullable=False)
-    description = Column(Text, nullable=False)
+    message = Column(Text, nullable=False)  # Changed from 'description' to 'message' to match DB
     
-    # Monitoring criteria (for future alerts)
-    criteria = Column(Text)  # JSON string with monitoring criteria
-    threshold = Column(Float)  # Threshold value for triggering
-    frequency = Column(String)  # weekly, monthly, etc.
-    
-    # Alert state
-    is_active = Column(Boolean, default=True)
+    # Alert state (only is_read exists in DB)
     is_read = Column(Boolean, default=False)
-    triggered_at = Column(DateTime(timezone=True), server_default=func.now())
-    acknowledged_at = Column(DateTime(timezone=True))
     
     # Metadata
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -1,7 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional, Dict, Any
-import json
 import uuid
 
 from app.models.category import Category
@@ -16,13 +15,13 @@ class CategoryService:
     def create_default_categories(db: Session, user_id: uuid.UUID) -> List[Category]:
         """Create default categories for a new user"""
         default_categories = [
-            {"name": "Food & Dining", "color": "#FF6B6B", "keywords": ["restaurant", "food", "dining", "lunch", "breakfast", "dinner", "cafe", "coffee", "pizza", "burger", "grocery", "supermarket"]},
-            {"name": "Transportation", "color": "#4ECDC4", "keywords": ["gas", "fuel", "uber", "lyft", "taxi", "bus", "train", "metro", "parking", "toll", "car", "auto"]},
-            {"name": "Shopping", "color": "#45B7D1", "keywords": ["amazon", "store", "mall", "shop", "retail", "clothing", "clothes", "purchase", "buy"]},
-            {"name": "Entertainment", "color": "#96CEB4", "keywords": ["movie", "cinema", "theater", "concert", "game", "spotify", "netflix", "entertainment", "fun", "leisure"]},
-            {"name": "Utilities", "color": "#FFEAA7", "keywords": ["electric", "electricity", "water", "gas", "internet", "phone", "mobile", "utility", "bill", "power"]},
-            {"name": "Healthcare", "color": "#DDA0DD", "keywords": ["doctor", "hospital", "pharmacy", "medical", "health", "dentist", "clinic", "medicine", "prescription"]},
-            {"name": "Housing", "color": "#F39C12", "keywords": ["rent", "mortgage", "home", "house", "apartment", "property", "maintenance", "repair", "insurance"]},
+            {"name": "Alimentación", "color": "#FF6B6B", "keywords": ["restaurante", "comida", "almuerzo", "desayuno", "cena", "café", "cafetería", "pizza", "hamburguesa", "supermercado", "mercado", "panadería", "carnicería", "delivery", "pedido"]},
+            {"name": "Transporte", "color": "#4ECDC4", "keywords": ["gasolina", "combustible", "uber", "taxi", "bus", "metro", "tren", "estacionamiento", "peaje", "auto", "coche", "vehículo", "transporte", "bicicleta", "motocicleta"]},
+            {"name": "Compras", "color": "#45B7D1", "keywords": ["tienda", "centro comercial", "compra", "retail", "ropa", "vestimenta", "amazon", "mercadolibre", "shopping", "boutique", "outlet", "farmacia", "droguería", "librería", "juguetería"]},
+            {"name": "Entretenimiento", "color": "#96CEB4", "keywords": ["cine", "película", "teatro", "concierto", "juego", "spotify", "netflix", "entretenimiento", "diversión", "ocio", "youtube", "streaming", "música", "deporte", "gimnasio"]},
+            {"name": "Servicios Públicos", "color": "#FFEAA7", "keywords": ["electricidad", "luz", "agua", "gas", "internet", "teléfono", "móvil", "celular", "servicio", "factura", "cable", "wifi", "calefacción", "basura", "alcantarillado"]},
+            {"name": "Salud", "color": "#DDA0DD", "keywords": ["doctor", "médico", "hospital", "clínica", "farmacia", "medicina", "dentista", "consulta", "receta", "seguro médico", "copago", "urgencias", "cirugía", "terapia", "laboratorio"]},
+            {"name": "Vivienda", "color": "#F39C12", "keywords": ["alquiler", "arriendo", "hipoteca", "casa", "apartamento", "propiedad", "mantenimiento", "reparación", "seguro hogar", "administración", "inquilino", "propietario", "inmobiliaria", "mudanza", "muebles"]},
         ]
         
         categories = []
@@ -31,7 +30,6 @@ class CategoryService:
                 user_id=user_id,
                 name=cat_data["name"],
                 color=cat_data["color"],
-                keywords=json.dumps(cat_data["keywords"]),
                 is_default=True,
                 is_active=True
             )
@@ -39,13 +37,29 @@ class CategoryService:
             categories.append(category)
         
         db.commit()
+        
+        # After creating categories, create keywords for each category
+        # Import here to avoid circular import
+        from app.models.category_keyword import CategoryKeyword
+        
+        for i, cat_data in enumerate(default_categories):
+            category = categories[i]
+            for keyword in cat_data["keywords"]:
+                keyword_obj = CategoryKeyword(
+                    user_id=user_id,
+                    category_id=category.id,
+                    keyword=keyword.lower().strip()
+                )
+                db.add(keyword_obj)
+        
+        db.commit()
         return categories
     
     @staticmethod
     def get_user_categories(db: Session, user_id: uuid.UUID, include_inactive: bool = False) -> List[Category]:
-        """Get all categories for a user (including system categories)"""
+        """Get all categories for a user (only user-specific categories)"""
         query = db.query(Category).filter(
-            (Category.user_id == user_id) | (Category.is_system == True)  # User categories OR system categories
+            Category.user_id == user_id  # Only user categories
         )
         if not include_inactive:
             query = query.filter(Category.is_active == True)
@@ -53,9 +67,9 @@ class CategoryService:
     
     @staticmethod
     def get_category_count(db: Session, user_id: uuid.UUID) -> int:
-        """Get the number of active categories for a user (including system categories)"""
+        """Get the number of active categories for a user (only user-specific categories)"""
         return db.query(Category).filter(
-            (Category.user_id == user_id) | (Category.is_system == True),  # User categories OR system categories
+            Category.user_id == user_id,  # Only user categories
             Category.is_active == True
         ).count()
     
@@ -72,14 +86,10 @@ class CategoryService:
         if existing:
             raise ValidationError(f"Category '{category_data.name}' already exists")
         
-        # Convert keywords list to JSON string
-        keywords_json = json.dumps(category_data.keywords) if category_data.keywords else None
-        
         category = Category(
             user_id=user_id,
             name=category_data.name.strip(),
             color=category_data.color,
-            keywords=keywords_json,
             is_default=False,
             is_active=category_data.is_active
         )
@@ -116,9 +126,6 @@ class CategoryService:
         
         if category_data.color is not None:
             category.color = category_data.color
-        
-        if category_data.keywords is not None:
-            category.keywords = json.dumps(category_data.keywords) if category_data.keywords else None
         
         if category_data.is_active is not None:
             category.is_active = category_data.is_active
@@ -167,23 +174,15 @@ class CategoryService:
         best_score = 0.0
         
         for category in categories:
-            if not category.keywords:
-                continue
+            # Get keywords from the relationship
+            keywords = category.get_keyword_strings()  # This returns list of keyword strings
             
-            try:
-                # Handle both string (JSON) and list formats
-                if isinstance(category.keywords, str):
-                    keywords = json.loads(category.keywords)
-                elif isinstance(category.keywords, list):
-                    keywords = category.keywords
-                else:
-                    continue
-            except (json.JSONDecodeError, TypeError):
+            if not keywords:
                 continue
             
             matched_keywords = []
             for keyword in keywords:
-                if isinstance(keyword, str) and keyword.lower() in text_to_match:
+                if keyword.lower() in text_to_match:
                     matched_keywords.append(keyword)
             
             if matched_keywords:

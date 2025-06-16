@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -15,19 +15,18 @@ from app.services.ai_service import AIService
 
 router = APIRouter()
 
-@router.get("/category", response_model=List[CategorySpending])
-async def get_category_spending(
-    start_date: date = Query(None),
-    end_date: date = Query(None),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Get spending per category"""
+def _get_category_spending_internal(
+    db: Session,
+    user_id: int,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None
+) -> List[CategorySpending]:
+    """Internal function to get category spending"""
     query = db.query(
         Transaction.category,
         func.sum(Transaction.amount).label('total_amount'),
         func.count(Transaction.id).label('transaction_count')
-    ).join(Card).filter(Card.user_id == current_user.id)
+    ).join(Card).filter(Card.user_id == user_id)
     
     if start_date:
         query = query.filter(Transaction.transaction_date >= start_date)
@@ -45,6 +44,16 @@ async def get_category_spending(
         for result in results
     ]
 
+@router.get("/category", response_model=List[CategorySpending])
+async def get_category_spending(
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get spending per category"""
+    return _get_category_spending_internal(db, current_user.id, start_date, end_date)
+
 @router.get("/trends", response_model=List[SpendingTrend])
 async def get_spending_trends(
     months: int = Query(12, ge=1, le=24),
@@ -53,13 +62,13 @@ async def get_spending_trends(
 ):
     """Get historical spending trends"""
     results = db.query(
-        func.to_char(Transaction.transaction_date, 'YYYY-MM').label('month'),
+        func.strftime('%Y-%m', Transaction.transaction_date).label('month'),
         func.sum(Transaction.amount).label('total_amount')
     ).join(Card).filter(
         Card.user_id == current_user.id,
-        Transaction.transaction_date >= func.current_date() - func.interval(f'{months} months')
+        Transaction.transaction_date >= func.date('now', f'-{months} months')
     ).group_by(
-        func.to_char(Transaction.transaction_date, 'YYYY-MM')
+        func.strftime('%Y-%m', Transaction.transaction_date)
     ).order_by('month').all()
     
     return [
@@ -153,10 +162,10 @@ async def get_analytics_dashboard(
     """Get complete analytics dashboard data"""
     # Get category spending for current month
     current_month = date.today().replace(day=1)
-    category_spending = await get_category_spending(
-        start_date=current_month,
-        current_user=current_user,
-        db=db
+    category_spending = _get_category_spending_internal(
+        db=db,
+        user_id=current_user.id,
+        start_date=current_month
     )
     
     # Get trends for last 12 months

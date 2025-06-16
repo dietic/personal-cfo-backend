@@ -7,7 +7,6 @@ import uuid
 class CategoryBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=50)
     color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')  # Hex color validation
-    keywords: Optional[List[str]] = None
     is_active: bool = True
 
 
@@ -18,7 +17,6 @@ class CategoryCreate(CategoryBase):
 class CategoryUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=50)
     color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
-    keywords: Optional[List[str]] = None
     is_active: Optional[bool] = None
 
 
@@ -26,6 +24,7 @@ class CategoryResponse(CategoryBase):
     id: uuid.UUID
     user_id: uuid.UUID
     is_default: bool
+    keywords: List[str] = []  # Will be populated from relationship
     created_at: datetime
     updated_at: Optional[datetime]
 

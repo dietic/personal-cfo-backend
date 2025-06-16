@@ -9,7 +9,7 @@ from app.core.deps import get_current_active_user
 from app.models.user import User
 from app.models.transaction import Transaction
 from app.models.card import Card
-from app.schemas.transaction import TransactionCreate, TransactionUpdate, Transaction as TransactionSchema
+from app.schemas.transaction import TransactionCreate, TransactionUpdate, Transaction as TransactionSchema, TransactionsBulkDelete
 from app.services.ai_service import AIService
 
 router = APIRouter()
@@ -121,6 +121,43 @@ async def update_transaction(
     db.commit()
     db.refresh(transaction)
     return transaction
+
+@router.delete("/bulk")
+async def delete_transactions_bulk(
+    request: TransactionsBulkDelete,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete multiple transactions"""
+    transaction_ids = request.transaction_ids
+    
+    if not transaction_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No transaction IDs provided"
+        )
+    
+    # Get all transactions that belong to the current user
+    transactions = db.query(Transaction).join(Card).filter(
+        Transaction.id.in_(transaction_ids),
+        Card.user_id == current_user.id
+    ).all()
+    
+    if len(transactions) != len(transaction_ids):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Some transactions not found"
+        )
+    
+    # Delete all transactions
+    for transaction in transactions:
+        db.delete(transaction)
+    
+    db.commit()
+    return {
+        "message": f"{len(transactions)} transactions deleted successfully",
+        "deleted_count": len(transactions)
+    }
 
 @router.delete("/{transaction_id}")
 async def delete_transaction(

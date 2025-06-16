@@ -45,12 +45,15 @@ class PatternBasedStatementService:
     def extract_transactions_from_statement(self, statement_text: str) -> List[Dict[str, Any]]:
         """
         Extract all transactions from a BCP VISA credit card statement using pattern matching.
-        Fixed to correctly identify currency based on column position.
         """
         transactions = []
         
         # Split the text into lines for processing
         lines = statement_text.split('\n')
+        
+        # Pattern to match transaction lines with two amount columns (Soles and Dólares)
+        # Format: Date Date Description [Location] OPERATION_TYPE [Soles_Amount] [Dólares_Amount]
+        transaction_pattern = r'(\d{1,2}[A-Za-z]{3})\s+(\d{1,2}[A-Za-z]{3})\s+(.+?)\s+(CONSUMO|PAGO|CARGO)\s+(?:([\d,]+\.?\d*-?)\s+)?([\d,]+\.?\d*-?)?'
         
         def parse_date(date_str: str, year: int = 2025) -> str:
             """Convert date string like '14Abr' to '2025-04-14'"""
@@ -63,36 +66,32 @@ class PatternBasedStatementService:
             """Clean and standardize description"""
             # Remove extra spaces and clean up
             desc = re.sub(r'\s+', ' ', desc.strip())
+            # Remove location codes like "PE", "FL", "CA", "WA", "MN" at the end
+            desc = re.sub(r'\s+[A-Z]{2}$', '', desc)
             return desc
         
-        def determine_currency_and_amount(after_operation: str) -> tuple:
-            """Determine currency based on spacing pattern after operation"""
-            # Count leading spaces to determine which column the amount is in
-            if re.match(r'^\s{15,}[\d,]+\.?\d*-?$', after_operation):
-                # Many spaces (15+) = USD column (dollars)
-                currency = 'USD'
-                amount_str = after_operation.strip()
-            elif re.match(r'^\s{5,14}[\d,]+\.?\d*-?$', after_operation):
-                # Fewer spaces (5-14) = PEN column (soles)
-                currency = 'PEN'
-                amount_str = after_operation.strip()
-            else:
-                # Fallback - if pattern doesn't match, assume PEN
-                currency = 'PEN'
-                amount_str = after_operation.strip()
-            
-            # Process amount
-            is_negative = amount_str.endswith('-')
-            clean_amount = amount_str.replace('-', '').replace(',', '')
-            
-            if clean_amount:
+        def determine_currency_and_amount(soles_amount: str, dolares_amount: str) -> tuple:
+            """Determine currency and amount based on which column has the value"""
+            # Check if soles column has amount
+            if soles_amount and soles_amount.strip():
+                is_negative = soles_amount.endswith('-')
+                clean_amount = soles_amount.replace('-', '').replace(',', '')
                 amount = float(clean_amount)
                 if is_negative:
                     amount = -amount
-            else:
-                amount = 0.0
-                
-            return currency, amount
+                return 'PEN', amount
+            
+            # Check if dólares column has amount  
+            elif dolares_amount and dolares_amount.strip():
+                is_negative = dolares_amount.endswith('-')
+                clean_amount = dolares_amount.replace('-', '').replace(',', '')
+                amount = float(clean_amount)
+                if is_negative:
+                    amount = -amount
+                return 'USD', amount
+            
+            # Fallback - shouldn't happen but just in case
+            return 'PEN', 0.0
         
         # Process each line
         current_year = 2025  # Based on the statement dates
@@ -102,47 +101,41 @@ class PatternBasedStatementService:
             if not line:
                 continue
                 
-            # Match transaction pattern: capture everything before operation and everything after
-            operation_match = re.search(r'(.+?)\s+(CONSUMO|PAGO|CARGO)(.*)$', line)
-            
-            if operation_match:
-                before_operation = operation_match.group(1)
-                operation_type = operation_match.group(2)
-                after_operation = operation_match.group(3)
+            # Match transaction pattern
+            match = re.search(transaction_pattern, line)
+            if match:
+                process_date_str = match.group(1)
+                consumption_date_str = match.group(2)
+                description = match.group(3)
+                operation_type = match.group(4)
+                soles_amount = match.group(5)  # Could be None
+                dolares_amount = match.group(6)  # Could be None
                 
-                # Extract dates and description from before_operation
-                date_match = re.match(r'(\d{1,2}[A-Za-z]{3})\s+(\d{1,2}[A-Za-z]{3})\s+(.+)', before_operation)
+                # Parse dates
+                transaction_date = parse_date(consumption_date_str, current_year)
                 
-                if date_match:
-                    process_date_str = date_match.group(1)
-                    consumption_date_str = date_match.group(2)
-                    description = date_match.group(3)
-                    
-                    # Parse dates
-                    transaction_date = parse_date(consumption_date_str, current_year)
-                    
-                    # Clean description
-                    clean_desc = clean_description(description)
-                    
-                    # Determine currency and amount based on spacing pattern
-                    currency, amount = determine_currency_and_amount(after_operation)
-                    
-                    # Map operation types
-                    type_mapping = {
-                        'CONSUMO': 'Purchase',
-                        'PAGO': 'Payment',
-                        'CARGO': 'Charge'
-                    }
-                    
-                    transaction = {
-                        'transaction_date': transaction_date,
-                        'description': clean_desc,
-                        'transaction_type': type_mapping.get(operation_type, operation_type),
-                        'currency': currency,
-                        'amount': amount
-                    }
-                    
-                    transactions.append(transaction)
+                # Clean description
+                clean_desc = clean_description(description)
+                
+                # Determine currency and amount based on column placement
+                currency, amount = determine_currency_and_amount(soles_amount, dolares_amount)
+                
+                # Map operation types
+                type_mapping = {
+                    'CONSUMO': 'Purchase',
+                    'PAGO': 'Payment',
+                    'CARGO': 'Charge'
+                }
+                
+                transaction = {
+                    'transaction_date': transaction_date,
+                    'description': clean_desc,
+                    'transaction_type': type_mapping.get(operation_type, operation_type),
+                    'currency': currency,
+                    'amount': amount
+                }
+                
+                transactions.append(transaction)
         
         # Sort transactions by date
         transactions.sort(key=lambda x: x['transaction_date'])

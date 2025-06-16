@@ -7,6 +7,7 @@ import uuid
 class BudgetBase(BaseModel):
     category: str
     limit_amount: Decimal
+    currency: str = "USD"  # Default to USD
     month: date  # First day of the month
 
 class BudgetCreate(BudgetBase):
@@ -15,6 +16,7 @@ class BudgetCreate(BudgetBase):
 class BudgetUpdate(BaseModel):
     category: Optional[str] = None
     limit_amount: Optional[Decimal] = None
+    currency: Optional[str] = None
     month: Optional[date] = None
 
 class Budget(BudgetBase):

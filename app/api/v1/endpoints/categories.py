@@ -32,7 +32,23 @@ def get_categories(
         user_id=current_user.id, 
         include_inactive=include_inactive
     )
-    return categories
+    
+    # Convert to response format with keywords populated
+    response_categories = []
+    for category in categories:
+        response_categories.append(CategoryResponse(
+            id=category.id,
+            user_id=category.user_id,
+            name=category.name,
+            color=category.color,
+            is_default=category.is_default,
+            is_active=category.is_active,
+            keywords=category.get_keyword_strings(),
+            created_at=category.created_at,
+            updated_at=category.updated_at
+        ))
+    
+    return response_categories
 
 
 @router.get("/stats", response_model=Dict[str, Any])
@@ -139,7 +155,23 @@ def create_default_categories(
         )
     
     categories = CategoryService.create_default_categories(db=db, user_id=current_user.id)
-    return categories
+    
+    # Convert to response format with keywords populated
+    response_categories = []
+    for category in categories:
+        response_categories.append(CategoryResponse(
+            id=category.id,
+            user_id=category.user_id,
+            name=category.name,
+            color=category.color,
+            is_default=category.is_default,
+            is_active=category.is_active,
+            keywords=category.get_keyword_strings(),
+            created_at=category.created_at,
+            updated_at=category.updated_at
+        ))
+    
+    return response_categories
 
 
 @router.get("/suggest/{merchant}")
@@ -156,7 +188,7 @@ def get_categorization_suggestions(
         user_id=current_user.id,
         merchant=merchant,
         description=description or "",
-        amount=amount
+        amount=amount or 0.0
     )
     
     return {
@@ -177,7 +209,7 @@ def test_keyword_matching(
         db=db,
         user_id=current_user.id,
         merchant=merchant,
-        description=description
+        description=description or ""
     )
     
     if match:

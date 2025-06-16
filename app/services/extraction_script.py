@@ -49,9 +49,9 @@ def extract_transactions_from_statement(statement_text: str) -> List[Dict[str, A
     # Split the text into lines for processing
     lines = statement_text.split('\n')
     
-    # Pattern to match transaction lines
-    # Format: Date Date Description [Location] OPERATION_TYPE Amount
-    transaction_pattern = r'(\d{1,2}[A-Za-z]{3})\s+(\d{1,2}[A-Za-z]{3})\s+(.+?)\s+(CONSUMO|PAGO|CARGO)\s+([\d,]+\.?\d*-?)'
+    # Pattern to match transaction lines with spacing analysis
+    # Format: Date Date Description [Location] OPERATION_TYPE [spaces] Amount
+    transaction_pattern = r'(\d{1,2}[A-Za-z]{3})\s+(\d{1,2}[A-Za-z]{3})\s+(.+?)\s+(CONSUMO|PAGO|CARGO)(.*)$'
     
     # Month abbreviation mapping for Spanish months
     month_mapping = {
@@ -75,32 +75,44 @@ def extract_transactions_from_statement(statement_text: str) -> List[Dict[str, A
         desc = re.sub(r'\s+[A-Z]{2}$', '', desc)
         return desc
     
-    def determine_currency_and_amount(amount_str: str, description: str) -> tuple:
-        """Determine currency and clean amount based on context"""
+    def determine_currency_and_amount(after_operation: str) -> tuple:
+        """Determine currency and amount based on spacing patterns in BCP VISA statements"""
+        # USD amounts appear in the right column with more spacing (15+ spaces)
+        # PEN amounts appear in the left column with less spacing (5-14 spaces)
+        
+        # Check for USD pattern (more spacing after operation)
+        if re.match(r'^\s{15,}[\d,]+\.?\d*-?$', after_operation):
+            currency = 'USD'
+            amount_match = re.search(r'[\d,]+\.?\d*-?$', after_operation)
+        # Check for PEN pattern (less spacing after operation)  
+        elif re.match(r'^\s{5,14}[\d,]+\.?\d*-?$', after_operation):
+            currency = 'PEN'
+            amount_match = re.search(r'[\d,]+\.?\d*-?$', after_operation)
+        else:
+            # Fallback: if no clear pattern, assume PEN
+            currency = 'PEN'
+            amount_match = re.search(r'[\d,]+\.?\d*-?$', after_operation)
+            
+        if not amount_match:
+            return 'PEN', 0.0
+            
+        amount_str = amount_match.group()
+        
         # Remove any negative sign for processing
         is_negative = amount_str.endswith('-')
         clean_amount = amount_str.replace('-', '').replace(',', '')
         
         # Convert to float
-        amount = float(clean_amount)
+        try:
+            amount = float(clean_amount)
+        except ValueError:
+            amount = 0.0
         
         # If it's a payment (negative), keep it negative
         if is_negative:
             amount = -amount
-        
-        # Determine currency based on description and amount patterns
-        # US locations and services typically indicate USD
-        usd_indicators = [
-            'ORLANDO FL', 'MIAMI FL', 'KISSIMMEE FL', 'SAINT CLOUD FL',
-            'Burbank CA', 'OPENAI', 'APPLE.COM', 'NETFLIX.COM', 'AMAZON',
-            'STEAMGAMES.COM', 'Disney Plus', 'FRONTENDMASTERS.COM'
-        ]
-        
-        # Check if description contains USD indicators
-        if any(indicator in description.upper() for indicator in usd_indicators):
-            return 'USD', amount
-        else:
-            return 'PEN', amount  # Peruvian Soles
+            
+        return currency, amount
     
     # Process each line
     current_year = 2025  # Based on the statement dates
@@ -117,7 +129,7 @@ def extract_transactions_from_statement(statement_text: str) -> List[Dict[str, A
             consumption_date_str = match.group(2)
             description = match.group(3)
             operation_type = match.group(4)
-            amount_str = match.group(5)
+            after_operation = match.group(5)  # Everything after the operation type
             
             # Parse dates
             transaction_date = parse_date(consumption_date_str, current_year)
@@ -125,8 +137,8 @@ def extract_transactions_from_statement(statement_text: str) -> List[Dict[str, A
             # Clean description
             clean_desc = clean_description(description)
             
-            # Determine currency and amount
-            currency, amount = determine_currency_and_amount(amount_str, clean_desc)
+            # Determine currency and amount based on spacing
+            currency, amount = determine_currency_and_amount(after_operation)
             
             # Map operation types
             type_mapping = {

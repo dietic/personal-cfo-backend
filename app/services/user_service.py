@@ -33,6 +33,18 @@ class UserService:
         self.db.add(db_user)
         self.db.commit()
         self.db.refresh(db_user)
+        
+        # Create default categories and seed keywords for new user
+        from app.services.category_service import CategoryService
+        from app.services.keyword_service import KeywordService
+        
+        # Create default categories
+        CategoryService.create_default_categories(self.db, db_user.id)
+        
+        # Seed default keywords (15 per category)
+        keyword_service = KeywordService(self.db)
+        keyword_service.seed_default_keywords(str(db_user.id))
+        
         return db_user
     
     def authenticate_user(self, email: str, password: str) -> Optional[User]:

@@ -43,7 +43,7 @@ router = APIRouter()
 @router.post("/upload", response_model=StatementSchema)
 async def upload_statement(
     file: UploadFile = File(...),
-    card_id: uuid.UUID = None,
+    card_id: Optional[uuid.UUID] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -198,32 +198,48 @@ async def process_statement(
             for tx in user_history
         ]
         
-        # Create transactions
-        ai_service = AIService()
+        # Create transactions using keyword-only categorization
+        from app.services.category_service import CategoryService
         transactions_created = 0
         
         for tx_data in transactions_data:
-            # Auto-categorize transaction with currency support
-            ai_result = ai_service.categorize_transaction(
-                tx_data["merchant"],
-                float(tx_data["amount"]),
-                tx_data.get("description", ""),
-                tx_data.get("currency", "USD")
+            # Use keyword-based categorization instead of AI
+            keyword_result = CategoryService.categorize_by_keywords(
+                db, 
+                current_user.id, 
+                tx_data["merchant"]
             )
+            
+            # Determine category and confidence
+            if keyword_result:
+                category = keyword_result.category_name
+                confidence = keyword_result.confidence
+            else:
+                category = "Sin categoría"  # Default uncategorized category
+                confidence = 0.0
             
             transaction = Transaction(
                 card_id=card.id,
                 merchant=tx_data["merchant"],
                 amount=tx_data["amount"],
                 currency=tx_data.get("currency", "USD"),
-                category=ai_result["category"],
+                category=category,
                 transaction_date=tx_data["transaction_date"],
                 description=tx_data.get("description"),
-                ai_confidence=ai_result["confidence"]
+                ai_confidence=confidence  # Store keyword confidence
             )
             
             db.add(transaction)
             transactions_created += 1
+        
+        # Generate AI insights for the statement (keep AI insights functionality)
+        ai_service = AIService()
+        statement_month_str = request.statement_month.strftime("%Y-%m") if request.statement_month else datetime.now().strftime("%Y-%m")
+        ai_insights = ai_service.analyze_statement_and_generate_insights(
+            transactions_data,
+            statement_month_str,
+            history_data
+        )
         
         # Generate AI insights for the statement
         statement_month_str = request.statement_month.strftime("%Y-%m") if request.statement_month else datetime.now().strftime("%Y-%m")
@@ -647,50 +663,24 @@ async def upload_statement_simple(
             # The script returns: transaction_date, description, transaction_type, currency, amount
             # We need to add categories and merchant names
             
-            # Get user's categories for fallback
+            # Get user's categories for keyword-based categorization
             from app.services.category_service import CategoryService
             user_categories = CategoryService.get_category_names_for_ai(db, current_user.id)
             if not user_categories:
-                user_categories = ['Supermercado', 'Entretenimiento', 'Combustible', 'Salud', 'Misc']
+                user_categories = ['Supermercado', 'Entretenimiento', 'Combustible', 'Salud', 'Sin categoría']
             
-            # Simple categorization based on description keywords
-            def simple_categorize(description: str) -> str:
-                description_upper = description.upper()
+            # Use keyword-based categorization instead of simple rules
+            def keyword_categorize(description: str) -> str:
+                keyword_result = CategoryService.categorize_by_keywords(
+                    db, 
+                    current_user.id, 
+                    description
+                )
                 
-                # Restaurant/Food
-                if any(word in description_upper for word in ['RESTAURANT', 'RAPPI', 'MCDONALDS', 'STARBUCKS', 'DUNKIN', 'CHIPOTLE', 'CHILIS']):
-                    return 'Restaurantes'
-                
-                # Entertainment
-                if any(word in description_upper for word in ['NETFLIX', 'DISNEY', 'STEAM', 'GAMESTOP', 'ADOBE']):
-                    return 'Entretenimiento'
-                
-                # Transportation
-                if any(word in description_upper for word in ['SHELL', 'SAFECAR', 'LIMA EXPRESA', 'UBER']):
-                    return 'Transporte'
-                
-                # Shopping
-                if any(word in description_upper for word in ['TARGET', 'WALMART', 'BEST BUY', 'AMAZON', 'MARSHALLS', 'HOMEGOODS']):
-                    return 'Compras'
-                
-                # Supermarket
-                if any(word in description_upper for word in ['WONG', 'MAKRO', 'SUPERMERCADO']):
-                    return 'Supermercado'
-                
-                # Health/Fitness
-                if any(word in description_upper for word in ['SMART FIT', 'GYM', 'DOCTOR', 'FARMACIA']):
-                    return 'Salud'
-                
-                # Education
-                if any(word in description_upper for word in ['UPC', 'UNIVERSIDAD', 'FRONTENDMASTERS']):
-                    return 'Educación'
-                
-                # Tech/Services
-                if any(word in description_upper for word in ['APPLE', 'OPENAI', 'MOVISTAR', 'RIMAC']):
-                    return 'Servicios'
-                
-                # Default
-                return 'Misc'
+                if keyword_result:
+                    return keyword_result.category_name
+                else:
+                    return 'Sin categoría'  # Default uncategorized category
             
             # Process each transaction
             processed_transactions = []
@@ -701,7 +691,7 @@ async def upload_statement_simple(
                     'merchant': tx['description'],  # Use description as merchant
                     'amount': tx['amount'],
                     'currency': tx['currency'],
-                    'category': simple_categorize(tx['description']),
+                    'category': keyword_categorize(tx['description']),
                     'transaction_type': tx['transaction_type']
                 }
                 processed_transactions.append(processed_tx)
@@ -819,3 +809,44 @@ async def upload_statement_simple(
             status_code=500, 
             detail=f"Statement processing failed: {str(e)}"
         )
+
+
+@router.delete("/{statement_id}")
+async def delete_statement(
+    statement_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a statement and all its associated transactions"""
+    statement = db.query(Statement).filter(
+        Statement.id == statement_id,
+        Statement.user_id == current_user.id
+    ).first()
+    
+    if not statement:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Statement not found"
+        )
+    
+    # Delete associated transactions first (if any)
+    transactions_deleted = db.query(Transaction).filter(
+        Transaction.statement_id == statement_id
+    ).delete()
+    
+    # Delete the file from filesystem if it exists
+    if statement.file_path and os.path.exists(statement.file_path):
+        try:
+            os.remove(statement.file_path)
+        except Exception as e:
+            logger.warning(f"Failed to delete file {statement.file_path}: {str(e)}")
+    
+    # Delete the statement record
+    db.delete(statement)
+    db.commit()
+    
+    return {
+        "message": "Statement deleted successfully",
+        "transactions_deleted": transactions_deleted,
+        "statement_id": str(statement_id)
+    }

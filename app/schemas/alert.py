@@ -12,10 +12,7 @@ class AlertBase(BaseModel):
     alert_type: AlertType
     severity: AlertSeverity
     title: str
-    description: str
-    criteria: Optional[str] = None
-    threshold: Optional[float] = None
-    frequency: Optional[str] = None
+    message: str  # Changed from 'description' to 'message' to match DB
 
 
 class AlertCreate(AlertBase):
@@ -26,11 +23,9 @@ class Alert(AlertBase):
     id: uuid.UUID
     user_id: uuid.UUID
     statement_id: Optional[uuid.UUID] = None
-    is_active: bool
     is_read: bool
-    triggered_at: datetime
-    acknowledged_at: Optional[datetime] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
@@ -38,5 +33,3 @@ class Alert(AlertBase):
 
 class AlertUpdate(BaseModel):
     is_read: Optional[bool] = None
-    is_active: Optional[bool] = None
-    acknowledged_at: Optional[datetime] = None

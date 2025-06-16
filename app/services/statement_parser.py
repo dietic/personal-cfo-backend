@@ -49,13 +49,62 @@ class StatementParser:
         for indicator in sol_indicators:
             if indicator.lower() in text_lower:
                 return 'PEN'
-        
+                
         for indicator in usd_indicators:
             if indicator.lower() in text_lower:
                 return 'USD'
         
         # Default to USD if not detected
         return 'USD'
+    
+    def detect_currency_from_column_position(self, transaction_line: str) -> str:
+        """
+        Detect currency based on the 6-column format positioning in BCP VISA statements.
+        Format: [Fecha proceso] [Fecha consumo] [Descripción] [Tipo operación] [Soles] [Dólares]
+        
+        PEN transactions: Amount directly after CONSUMO (Soles column)
+        USD transactions: Multiple spaces after CONSUMO (empty Soles column), amount in Dólares column
+        """
+        import re
+        
+        # First, check for international merchants that typically use USD
+        international_indicators = [
+            'OPENAI', 'CHATGPT', 'APPLE.COM', 'AMAZON', 'NETFLIX', 'DISNEY', 'STEAM',
+            'FRONTENDMASTER', 'SPOTIFY', 'DROPBOX', 'GITHUB', 'GOOGLE',
+            # US locations (but be more specific to avoid false positives)
+            'BURBANK', 'ORLANDO', 'MIAMI', 'KISSIMMEE'
+        ]
+        
+        # Check if line contains international indicators
+        line_upper = transaction_line.upper()
+        has_strong_international_indicator = any(indicator in line_upper for indicator in international_indicators)
+        
+        # Look for the pattern after CONSUMO
+        consumo_match = re.search(r'CONSUMO\s*(.*)$', transaction_line)
+        if consumo_match:
+            after_consumo = consumo_match.group(1)
+            
+            # Pattern for immediate amount (PEN) - amount right after CONSUMO with minimal spacing
+            immediate_amount = re.match(r'\s{1,12}(\d{1,4}(?:,\d{3})*\.\d{2})$', after_consumo)
+            
+            # Pattern for distant amount (USD) - many spaces then amount (empty Soles column)
+            distant_amount = re.match(r'\s{20,}(\d{1,4}(?:,\d{3})*\.\d{2})$', after_consumo)
+            
+            if distant_amount or has_strong_international_indicator:
+                # Amount far from CONSUMO or strong international merchant = USD (Dólares column)
+                return 'USD'
+            elif immediate_amount:
+                # Amount directly after CONSUMO = PEN (Soles column)
+                return 'PEN'
+        
+        # Enhanced fallback logic
+        if has_strong_international_indicator:
+            return 'USD'
+        elif any(indicator in line_upper for indicator in ['LIMA', 'PERU', 'PE']):
+            return 'PEN'
+        
+        # Default to PEN for Peru-based statement
+        return 'PEN'
     
     def parse_csv_statement(self, file_content: bytes) -> List[Dict[str, Any]]:
         """Parse CSV bank statement"""
@@ -217,15 +266,26 @@ class StatementParser:
 
         EXTRACT ALL TRANSACTIONS - EVERY SINGLE ONE. This is not a sample request.
 
+        IMPORTANT - 6-Column Format Understanding:
+        This is a BCP VISA statement with 6 columns:
+        1. Fecha de proceso (Process Date)
+        2. Fecha de consumo (Consumption Date) 
+        3. Descripción (Description)
+        4. Tipo de operación (Operation Type - usually CONSUMO)
+        5. Soles (PEN amounts column)
+        6. Dólares (USD amounts column)
+
+        Currency Detection Rules:
+        - PEN transactions: Amount appears directly after "CONSUMO" (in Soles column)
+        - USD transactions: Multiple spaces after "CONSUMO" (empty Soles column), then amount appears in Dólares column
+        - International merchants (OPENAI, APPLE, AMAZON, NETFLIX, DISNEY, STEAM, etc.) are typically USD
+        - US state codes (CA, WA, FL, etc.) indicate USD transactions
+        - Peru merchants (PE location, LIMA) are typically PEN
+
         Date format help:
         - "23Abr" means April 23, 2024 (format as "2024-04-23")
         - "24Abr" means April 24, 2024 (format as "2024-04-24")
         - Spanish months: Ene=Jan, Feb=Feb, Mar=Mar, Abr=Apr, May=May, Jun=Jun, Jul=Jul, Ago=Aug, Sep=Sep, Oct=Oct, Nov=Nov, Dic=Dec
-
-        Currency detection:
-        - Lines with "S/" amounts are PEN currency
-        - Lines with "$" or "USD" amounts are USD currency
-        - If no symbol, check context or assume PEN for Peru-based merchants
 
         Return JSON with this structure:
         {{
@@ -241,6 +301,15 @@ class StatementParser:
                     "currency": "PEN",
                     "category": "Supermercado",
                     "type": "debit"
+                }},
+                {{
+                    "date": "2024-04-16",
+                    "merchant": "STEAMGAMES.COM",
+                    "description": "STEAMGAMES.COM 4259522 WA",
+                    "amount": 4.24,
+                    "currency": "USD",
+                    "category": "Entretenimiento",
+                    "type": "debit"
                 }}
             ]
         }}
@@ -249,7 +318,9 @@ class StatementParser:
         - Extract EVERY transaction - should be 80+ transactions total
         - Do NOT truncate or sample - extract ALL
         - Amounts should be positive numbers
-        - Currency should be "USD" if dollar symbol ($) is found, "PEN" if Sol symbol (S/.) is found
+        - Currency detection: Use column positioning and merchant analysis
+        - For PEN: Amount right after CONSUMO 
+        - For USD: Amount far right with international merchants
         - Date format must be YYYY-MM-DD
         - Be very careful with date parsing - look for context clues about date format
         - For merchant names, clean up and normalize the text
@@ -290,12 +361,23 @@ class StatementParser:
                             if allowed_categories and category not in allowed_categories:
                                 category = "Uncategorized"
                             
+                            # Improve currency detection using the new method
+                            # First try the AI-provided currency, then validate with our logic
+                            ai_currency = tx.get("currency", "USD")
+                            description = str(tx.get("description", tx.get("merchant", "")))
+                            
+                            # Use our enhanced currency detection as validation
+                            detected_currency = self.detect_currency_from_column_position(description)
+                            
+                            # Use the detected currency if it makes more sense
+                            final_currency = detected_currency if detected_currency in ['USD', 'PEN'] else ai_currency
+                            
                             transactions.append({
                                 'merchant': str(tx.get("merchant", "")).strip(),
                                 'amount': float(tx.get("amount", 0)),
-                                'currency': tx.get("currency", "USD"),
+                                'currency': final_currency,
                                 'transaction_date': transaction_date,
-                                'description': str(tx.get("description", tx.get("merchant", ""))).strip(),
+                                'description': description.strip(),
                                 'type': tx.get("type", "debit"),
                                 'category': category
                             })
@@ -354,31 +436,50 @@ class StatementParser:
             """
             
             prompt = f"""
-            Extract ALL transactions from this chunk of a Spanish VISA credit card statement.
+            Extract ALL transactions from this chunk of a BCP VISA credit card statement.
             This is chunk {i+1} of {len(chunks)} - extract EVERY transaction in this chunk.
 
             Transaction data:
             {chunk_text}
+
+            IMPORTANT - 6-Column Format Understanding:
+            This is a BCP VISA statement with 6 columns:
+            1. Fecha de proceso (Process Date)
+            2. Fecha de consumo (Consumption Date) 
+            3. Descripción (Description)
+            4. Tipo de operación (Operation Type - usually CONSUMO)
+            5. Soles (PEN amounts column)
+            6. Dólares (USD amounts column)
+
+            Currency Detection Rules:
+            - PEN transactions: Amount appears directly after "CONSUMO" (in Soles column)
+            - USD transactions: Multiple spaces after "CONSUMO" (empty Soles column), then amount in Dólares column
+            - International merchants (OPENAI, APPLE, AMAZON, NETFLIX, DISNEY, STEAM, etc.) are typically USD
+            - US state codes (CA, WA, FL, etc.) indicate USD transactions
+            - Peru merchants (PE location, LIMA) are typically PEN
 
             Date format help:
             - "23Abr" = April 23, 2024 = "2024-04-23"
             - "24Abr" = April 24, 2024 = "2024-04-24"
             - Spanish months: Ene=Jan, Feb=Feb, Mar=Mar, Abr=Apr, May=May, Jun=Jun
 
-            Currency rules:
-            - Lines with "S/" amounts = PEN currency
-            - Lines with "$" or "USD" = USD currency
-            - Peru merchants usually PEN, international usually USD
-
             Return JSON:
             {{
                 "transactions": [
                     {{
                         "date": "2024-04-23",
-                        "merchant": "merchant name",
-                        "description": "description",
-                        "amount": 123.45,
-                        "currency": "PEN or USD",
+                        "merchant": "MAKRO INDEPENDENCIA",
+                        "description": "MAKRO INDEPENDENCIA LIMA PE",
+                        "amount": 195.54,
+                        "currency": "PEN",
+                        "category": "category_name"
+                    }},
+                    {{
+                        "date": "2024-04-16",
+                        "merchant": "STEAMGAMES.COM",
+                        "description": "STEAMGAMES.COM 4259522 WA",
+                        "amount": 4.24,
+                        "currency": "USD",
                         "category": "category_name"
                     }}
                 ]
@@ -417,12 +518,22 @@ class StatementParser:
                                 if allowed_categories and category not in allowed_categories:
                                     category = "Misc"
                                 
+                                # Improve currency detection using the new method
+                                ai_currency = tx.get("currency", "PEN")
+                                description = str(tx.get("description", tx.get("merchant", "")))
+                                
+                                # Use our enhanced currency detection as validation
+                                detected_currency = self.detect_currency_from_column_position(description)
+                                
+                                # Use the detected currency if it makes more sense
+                                final_currency = detected_currency if detected_currency in ['USD', 'PEN'] else ai_currency
+                                
                                 all_transactions.append({
                                     'merchant': str(tx.get("merchant", "")).strip(),
                                     'amount': float(tx.get("amount", 0)),
-                                    'currency': tx.get("currency", "PEN"),
+                                    'currency': final_currency,
                                     'transaction_date': transaction_date,
-                                    'description': str(tx.get("description", tx.get("merchant", ""))).strip(),
+                                    'description': description.strip(),
                                     'type': tx.get("type", "debit"),
                                     'category': category
                                 })

@@ -1,7 +1,9 @@
 from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.ext.hybrid import hybrid_property
 import uuid
+import json
 
 from app.core.database import Base
 from app.core.types import GUID
@@ -14,6 +16,7 @@ class Category(Base):
     user_id = Column(GUID(), ForeignKey("users.id"), nullable=True)  # Nullable for system categories
     name = Column(String, nullable=False)
     color = Column(String, nullable=True)  # Hex color code for UI
+    _keywords = Column("keywords", Text, nullable=True)  # JSON string of keywords for auto-categorization
     is_default = Column(Boolean, default=False)  # System default categories
     is_system = Column(Boolean, default=False)  # True for predefined Spanish categories
     is_active = Column(Boolean, default=True)
@@ -24,27 +27,24 @@ class Category(Base):
     user = relationship("User", back_populates="categories")
     keywords = relationship("CategoryKeyword", back_populates="category", cascade="all, delete-orphan")
     
-    def get_keyword_strings(self):
-        """Return list of keyword strings for this category"""
-        return [kw.keyword.lower() for kw in self.keywords]
+    @hybrid_property
+    def keywords(self):
+        """Return keywords as a list"""
+        if self._keywords:
+            try:
+                return json.loads(self._keywords)
+            except (json.JSONDecodeError, TypeError):
+                return []
+        return []
     
-    def add_keyword(self, keyword_text: str, description: str = None):
-        """Add a new keyword to this category"""
-        from app.models.category_keyword import CategoryKeyword
-        keyword = CategoryKeyword(
-            user_id=self.user_id,
-            category_id=self.id,
-            keyword=keyword_text.lower().strip(),
-            description=description
-        )
-        self.keywords.append(keyword)
-        return keyword
-    
-    def remove_keyword(self, keyword_text: str):
-        """Remove a keyword from this category"""
-        keyword_text = keyword_text.lower().strip()
-        for keyword in self.keywords:
-            if keyword.keyword == keyword_text:
-                self.keywords.remove(keyword)
-                return True
-        return False
+    @keywords.setter
+    def keywords(self, value):
+        """Set keywords from a list"""
+        if value is None:
+            self._keywords = None
+        elif isinstance(value, list):
+            self._keywords = json.dumps(value)
+        elif isinstance(value, str):
+            self._keywords = value
+        else:
+            self._keywords = json.dumps(list(value))

@@ -39,6 +39,9 @@ class TransactionWithCard(Transaction):
     class Config:
         from_attributes = True
 
+class TransactionsBulkDelete(BaseModel):
+    transaction_ids: List[uuid.UUID]
+
 # Import here to avoid circular imports
 from app.schemas.card import Card
 TransactionWithCard.model_rebuild()
