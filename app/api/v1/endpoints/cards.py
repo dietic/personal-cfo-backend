@@ -2,12 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from typing import List
 import uuid
+from datetime import datetime
 
 from app.core.database import get_db
 from app.core.deps import get_current_active_user
 from app.models.user import User
 from app.models.card import Card
 from app.models.bank_provider import BankProvider
+from app.models.network_provider import NetworkProvider
+from app.models.card_type import CardType
 from app.schemas.card import CardCreate, CardUpdate, Card as CardSchema
 
 router = APIRouter()
@@ -18,13 +21,15 @@ async def get_cards(
     db: Session = Depends(get_db)
 ):
     """
-    Get all cards for the current user with bank provider details.
+    Get all cards for the current user with full relationship details.
     
-    Using joinedload to fetch bank details in a single query - like getting
-    a complete address book entry instead of just the reference number.
+    Using joinedload to fetch all related data in a single query - like getting
+    a complete profile instead of just basic info.
     """
     cards = db.query(Card).options(
-        joinedload(Card.bank_provider)
+        joinedload(Card.bank_provider),
+        joinedload(Card.network_provider),
+        joinedload(Card.card_type)
     ).filter(Card.user_id == current_user.id).all()
     return cards
 
@@ -35,10 +40,10 @@ async def create_card(
     db: Session = Depends(get_db)
 ):
     """
-    Create a new card with bank provider validation.
+    Create a new card with full validation of all relationships.
     
-    Like registering a new payment method - we need to verify the bank 
-    exists before linking it to the card.
+    Like registering a new payment method - we need to verify all the
+    related entities (bank, network, type) exist before linking them.
     """
     # Validate bank provider exists if provided
     if card_create.bank_provider_id:
@@ -53,16 +58,48 @@ async def create_card(
                 detail="Invalid bank provider"
             )
     
-    card = Card(**card_create.dict(), user_id=current_user.id)
+    # Validate network provider exists if provided
+    if card_create.network_provider_id:
+        network_provider = db.query(NetworkProvider).filter(
+            NetworkProvider.id == card_create.network_provider_id,
+            NetworkProvider.is_active == True
+        ).first()
+        
+        if not network_provider:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid network provider"
+            )
+    
+    # Validate card type exists if provided
+    if card_create.card_type_id:
+        card_type = db.query(CardType).filter(
+            CardType.id == card_create.card_type_id,
+            CardType.is_active == True
+        ).first()
+        
+        if not card_type:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid card type"
+            )
+    
+    card_data = card_create.dict()
+    card_data.update({
+        'user_id': current_user.id,
+        'created_at': datetime.utcnow()  # Explicitly set created_at since DB default isn't working
+    })
+    card = Card(**card_data)
     db.add(card)
     db.commit()
     
-    # Refresh with bank provider details
+    # Refresh with all relationship details
     db.refresh(card)
-    if card.bank_provider_id:
-        card = db.query(Card).options(
-            joinedload(Card.bank_provider)
-        ).filter(Card.id == card.id).first()
+    card = db.query(Card).options(
+        joinedload(Card.bank_provider),
+        joinedload(Card.network_provider),
+        joinedload(Card.card_type)
+    ).filter(Card.id == card.id).first()
     
     return card
 
@@ -72,9 +109,11 @@ async def get_card(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get a specific card by ID with bank provider details"""
+    """Get a specific card by ID with all relationship details"""
     card = db.query(Card).options(
-        joinedload(Card.bank_provider)
+        joinedload(Card.bank_provider),
+        joinedload(Card.network_provider),
+        joinedload(Card.card_type)
     ).filter(
         Card.id == card_id,
         Card.user_id == current_user.id
