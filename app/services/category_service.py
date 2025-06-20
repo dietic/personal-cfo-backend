@@ -245,8 +245,8 @@ class CategoryService:
         categories = CategoryService.get_user_categories(db, user_id, include_inactive=False)
         category_names = [category.name for category in categories]
         
-        # Add "Uncategorized" as fallback option
-        if "Uncategorized" not in category_names:
-            category_names.append("Uncategorized")
+        # Add "Sin categoría" as fallback option
+        if "Sin categoría" not in category_names:
+            category_names.append("Sin categoría")
             
         return category_names

@@ -125,8 +125,8 @@ class KeywordOnlyStatementService:
             self.db.commit()
             
             # Calculate summary statistics
-            categorized_count = len([t for t in categorized_transactions if t['category'] != 'Uncategorized'])
-            uncategorized_count = len([t for t in categorized_transactions if t['category'] == 'Uncategorized'])
+            categorized_count = len([t for t in categorized_transactions if t['category'] != 'Sin categoría'])
+            uncategorized_count = len([t for t in categorized_transactions if t['category'] == 'Sin categoría'])
             
             result = {
                 "statement_id": str(statement.id),
@@ -192,9 +192,9 @@ class KeywordOnlyStatementService:
         
         logger.info(f"Re-categorizing {len(transactions)} transactions for statement {statement_id}")
         
-        # Use keyword categorization service
+        # Use keyword categorization service with force recategorization
         results = self.keyword_categorization.categorize_database_transactions(
-            str(statement.user_id), transactions
+            str(statement.user_id), transactions, force_recategorize=True
         )
         
         # Update statement categorization status
@@ -237,7 +237,7 @@ class KeywordOnlyStatementService:
         }
         
         for transaction in transactions:
-            if transaction.category == 'Uncategorized':
+            if transaction.category == 'Sin categoría':
                 analysis["categorization_breakdown"]["uncategorized"] += 1
                 analysis["uncategorized_transactions"].append({
                     "id": str(transaction.id),
@@ -290,7 +290,7 @@ class KeywordOnlyStatementService:
         # Get uncategorized transactions
         uncategorized = self.db.query(Transaction).filter(
             Transaction.statement_id == statement_id,
-            Transaction.category == 'Uncategorized'
+            Transaction.category == 'Sin categoría'
         ).all()
         
         # Analyze merchant names and descriptions for common patterns

@@ -19,11 +19,13 @@ def _get_category_spending_internal(
     db: Session,
     user_id: int,
     start_date: Optional[date] = None,
-    end_date: Optional[date] = None
+    end_date: Optional[date] = None,
+    currency: Optional[str] = None
 ) -> List[CategorySpending]:
     """Internal function to get category spending"""
     query = db.query(
         Transaction.category,
+        Transaction.currency,
         func.sum(Transaction.amount).label('total_amount'),
         func.count(Transaction.id).label('transaction_count')
     ).join(Card).filter(Card.user_id == user_id)
@@ -32,14 +34,17 @@ def _get_category_spending_internal(
         query = query.filter(Transaction.transaction_date >= start_date)
     if end_date:
         query = query.filter(Transaction.transaction_date <= end_date)
+    if currency:
+        query = query.filter(Transaction.currency == currency)
     
-    results = query.group_by(Transaction.category).all()
+    results = query.group_by(Transaction.category, Transaction.currency).all()
     
     return [
         CategorySpending(
             category=result.category or "uncategorized",
             amount=result.total_amount,
-            transaction_count=result.transaction_count
+            transaction_count=result.transaction_count,
+            currency=result.currency
         )
         for result in results
     ]
@@ -48,11 +53,12 @@ def _get_category_spending_internal(
 async def get_category_spending(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    currency: Optional[str] = Query(None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get spending per category"""
-    return _get_category_spending_internal(db, current_user.id, start_date, end_date)
+    """Get spending per category, optionally filtered by currency"""
+    return _get_category_spending_internal(db, current_user.id, start_date, end_date, currency)
 
 @router.get("/trends", response_model=List[SpendingTrend])
 async def get_spending_trends(
@@ -165,7 +171,8 @@ async def get_analytics_dashboard(
     category_spending = _get_category_spending_internal(
         db=db,
         user_id=current_user.id,
-        start_date=current_month
+        start_date=current_month,
+        currency=None  # Get all currencies for dashboard overview
     )
     
     # Get trends for last 12 months

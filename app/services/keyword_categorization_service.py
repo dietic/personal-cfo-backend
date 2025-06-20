@@ -139,12 +139,12 @@ class KeywordCategorizationService:
                 categorized_txn['matched_keywords'] = match.matched_keywords
                 logger.info(f"Keyword categorized: {merchant} -> {match.category_name} (confidence: {match.confidence:.2f})")
             else:
-                # Default to "Uncategorized" if no keywords match
-                categorized_txn['category'] = 'Uncategorized'
+                # Default to "Sin categoría" if no keywords match
+                categorized_txn['category'] = 'Sin categoría'
                 categorized_txn['confidence'] = 0.0
                 categorized_txn['categorization_method'] = 'default'
                 categorized_txn['matched_keywords'] = []
-                logger.info(f"No keyword match for: {merchant}, defaulting to Uncategorized")
+                logger.info(f"No keyword match for: {merchant}, defaulting to Sin categoría")
             
             categorized_transactions.append(categorized_txn)
         
@@ -153,7 +153,8 @@ class KeywordCategorizationService:
     def categorize_database_transactions(
         self, 
         user_id: str, 
-        transactions: List[Transaction]
+        transactions: List[Transaction],
+        force_recategorize: bool = False
     ) -> Dict[str, Any]:
         """
         Categorize Transaction objects in the database using keywords.
@@ -161,6 +162,7 @@ class KeywordCategorizationService:
         Args:
             user_id: User ID
             transactions: List of Transaction model objects
+            force_recategorize: Whether to recategorize already categorized transactions
             
         Returns:
             Dictionary with categorization results and statistics
@@ -171,10 +173,10 @@ class KeywordCategorizationService:
             'uncategorized': 0,
             'categorization_details': []
         }
-        
+
         for transaction in transactions:
-            # Skip if already categorized
-            if transaction.category and transaction.category != 'Uncategorized':
+            # Skip if already categorized (unless force_recategorize is True)
+            if not force_recategorize and transaction.category and transaction.category != 'Sin categoría':
                 results['categorized'] += 1
                 results['categorization_details'].append({
                     'transaction_id': str(transaction.id),
@@ -183,7 +185,7 @@ class KeywordCategorizationService:
                     'confidence': getattr(transaction, 'ai_confidence', 1.0)
                 })
                 continue
-            
+
             # Attempt keyword categorization
             match = self.categorize_transaction(
                 user_id, 
@@ -208,14 +210,14 @@ class KeywordCategorizationService:
                 logger.info(f"Keyword categorized transaction {transaction.id}: {transaction.merchant} -> {match.category_name}")
             else:
                 # Set to uncategorized
-                transaction.category = 'Uncategorized'
+                transaction.category = 'Sin categoría'
                 transaction.ai_confidence = 0.0
                 
                 results['uncategorized'] += 1
                 results['categorization_details'].append({
                     'transaction_id': str(transaction.id),
                     'method': 'uncategorized',
-                    'category': 'Uncategorized',
+                    'category': 'Sin categoría',
                     'confidence': 0.0
                 })
                 
@@ -266,7 +268,7 @@ class KeywordCategorizationService:
                 })
             else:
                 preview.update({
-                    'category': 'Uncategorized',
+                    'category': 'Sin categoría',
                     'confidence': 0.0,
                     'matched_keywords': []
                 })

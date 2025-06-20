@@ -6,7 +6,7 @@ import uuid
 
 # revision identifiers
 revision = 'add_user_keyword_rules'
-down_revision = '3cf846d614cf_add_statement_id_to_transactions'
+down_revision = 'ca26460dbd46'  # Fixed: pointing to the correct migration ID
 branch_labels = None
 depends_on = None
 

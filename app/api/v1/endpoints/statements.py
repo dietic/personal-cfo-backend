@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Body
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Body, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
@@ -626,6 +626,7 @@ async def process_statement_new_approach(
 @router.post("/upload-simple")
 async def upload_statement_simple(
     file: UploadFile = File(...),
+    card_id: str = Form(...),  # Require card selection for bank type detection
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -636,6 +637,35 @@ async def upload_statement_simple(
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are supported"
+        )
+    
+    # Get the selected card to determine bank type
+    try:
+        card = db.query(Card).filter(
+            Card.id == card_id,
+            Card.user_id == current_user.id
+        ).first()
+        
+        if not card:
+            raise HTTPException(
+                status_code=404,
+                detail="Selected card not found"
+            )
+        
+        # Determine bank type from card's bank provider
+        bank_type = "BCP"  # Default fallback
+        if card.bank_provider:
+            bank_short_name = card.bank_provider.short_name or card.bank_provider.name
+            if "DINERS" in bank_short_name.upper():
+                bank_type = "DINERS"
+            elif "BCP" in bank_short_name.upper():
+                bank_type = "BCP"
+            # Add more bank mappings as needed
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error processing card information: {str(e)}"
         )
     
     try:
@@ -653,11 +683,11 @@ async def upload_statement_simple(
             temp_file_path = temp_file.name
         
         try:
-            # Extract transactions using the user's proven script
-            raw_transactions = process_bank_statement_pdf(temp_file_path)
+            # Extract transactions using the user's proven script with bank type
+            raw_transactions = process_bank_statement_pdf(temp_file_path, bank_type)
             
             if not raw_transactions:
-                raise HTTPException(status_code=400, detail="No transactions found in PDF")
+                raise HTTPException(status_code=400, detail=f"No transactions found in PDF for {bank_type} format")
             
             # Convert transaction format for database storage
             # The script returns: transaction_date, description, transaction_type, currency, amount
@@ -721,20 +751,8 @@ async def upload_statement_simple(
         db.refresh(statement)
         
         # Get or create default card
-        user_cards = db.query(Card).filter(Card.user_id == current_user.id).all()
-        if not user_cards:
-            default_card = Card(
-                user_id=current_user.id,
-                card_name=f"Default Card - {file.filename}",
-                card_type="credit",
-                bank_provider="BCP",
-                network_provider="VISA"
-            )
-            db.add(default_card)
-            db.commit()
-            db.refresh(default_card)
-        else:
-            default_card = user_cards[0]
+        # Use the selected card instead of creating a new one
+        selected_card = card  # We already have the card from earlier validation
         
         # Create transaction records
         created_transactions = []
@@ -747,7 +765,7 @@ async def upload_statement_simple(
                     transaction_date = txn_data.get('transaction_date')
                 
                 transaction = Transaction(
-                    card_id=default_card.id,
+                    card_id=selected_card.id,
                     statement_id=statement.id,
                     merchant=txn_data.get('merchant', txn_data.get('description', 'Unknown')),
                     amount=float(txn_data.get('amount', 0)),
@@ -850,3 +868,58 @@ async def delete_statement(
         "transactions_deleted": transactions_deleted,
         "statement_id": str(statement_id)
     }
+
+@router.post("/{statement_id}/recategorize", response_model=CategorizationResponse)
+async def recategorize_statement_transactions(
+    statement_id: uuid.UUID,
+    request: CategorizationRequest = Body(...),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Recategorize existing statement transactions based on updated keywords/categories"""
+    try:
+        # Check if statement exists and belongs to user
+        statement = db.query(Statement).filter(
+            Statement.id == statement_id,
+            Statement.user_id == current_user.id
+        ).first()
+        
+        if not statement:
+            raise HTTPException(status_code=404, detail="Statement not found")
+        
+        # Get existing transactions for this statement
+        transactions = db.query(Transaction).filter(
+            Transaction.statement_id == statement_id
+        ).all()
+        
+        if not transactions:
+            raise HTTPException(status_code=400, detail="No transactions found for this statement")
+        
+        logger.info(f"Recategorizing {len(transactions)} transactions for statement {statement_id}")
+        
+        # Create an instance of KeywordOnlyStatementService and call the method
+        from app.services.keyword_only_statement_service import KeywordOnlyStatementService
+        
+        service = KeywordOnlyStatementService(db)
+        result = service.recategorize_statement_transactions(statement_id)
+        
+        # Extract results from the service response
+        recategorization_summary = result.get("recategorization_summary", {})
+        categorized_count = recategorization_summary.get("categorized", 0)
+        uncategorized_count = recategorization_summary.get("uncategorized", 0)
+        
+        return CategorizationResponse(
+            statement_id=str(statement_id),
+            transactions_categorized=categorized_count,
+            ai_categorized=0,  # We only use keywords for recategorization
+            keyword_categorized=categorized_count,
+            uncategorized=uncategorized_count,
+            status="completed",
+            message=f"Successfully recategorized {categorized_count} transactions"
+        )
+        
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Recategorization failed for statement {statement_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Recategorization failed: {str(e)}")

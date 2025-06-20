@@ -14,11 +14,15 @@ class Card(Base):
     card_name = Column(String, nullable=False)
     payment_due_date = Column(Date)
     network_provider = Column(String)  # VISA, Mastercard, etc.
-    bank_provider = Column(String)     # BCP, Interbank, etc.
+    
+    # Changed from string to relationship - like upgrading from sticky notes to a proper database
+    bank_provider_id = Column(GUID(), ForeignKey("bank_providers.id"), nullable=True)
+    
     card_type = Column(String)         # credit, debit
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
     user = relationship("User", back_populates="cards")
+    bank_provider = relationship("BankProvider", back_populates="cards")
     transactions = relationship("Transaction", back_populates="card", cascade="all, delete-orphan")

@@ -7,6 +7,7 @@ class CategorySpending(BaseModel):
     category: str
     amount: Decimal
     transaction_count: int
+    currency: str
 
 class SpendingTrend(BaseModel):
     month: str
