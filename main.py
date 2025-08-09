@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 import os
 from dotenv import load_dotenv
+import logging
 
 from app.core.config import settings
 from app.api.v1.api import api_router
@@ -14,6 +15,17 @@ from app.services.seeding_service import SeedingService
 
 # Load environment variables
 load_dotenv()
+
+# Configure audit logger (JSON lines)
+audit_logger = logging.getLogger("audit")
+if not audit_logger.handlers:
+    handler = logging.StreamHandler()
+    # Keep raw JSON line without extra prefixes
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    audit_logger.addHandler(handler)
+audit_logger.setLevel(logging.INFO)
+# Do not propagate to root to avoid duplication
+audit_logger.propagate = False
 
 # PATCH: Apply optimized BCP extraction
 def apply_bcp_extraction_patch():

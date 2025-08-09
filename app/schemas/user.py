@@ -92,3 +92,10 @@ class AccountDeletionRequest(BaseModel):
         if v != "DELETE MY ACCOUNT":
             raise ValueError('confirmation text must be "DELETE MY ACCOUNT"')
         return v
+
+class OTPVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+class OTPResendRequest(BaseModel):
+    email: EmailStr

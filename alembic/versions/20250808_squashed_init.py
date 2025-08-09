@@ -20,63 +20,67 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # Reusable defaults
-DEFAULT_NOW = sa.text("now()")
+DEFAULT_NOW = sa.text("CURRENT_TIMESTAMP")
 
 
 def upgrade() -> None:
-    # Pre-create enums idempotently using DO blocks to avoid duplicate errors
-    op.execute(
-        """
-        DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'currencyenum') THEN
-                CREATE TYPE currencyenum AS ENUM ('USD','PEN','EUR','GBP');
-            END IF;
-        END $$;
-        """
-    )
-    op.execute(
-        """
-        DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'timezoneenum') THEN
-                CREATE TYPE timezoneenum AS ENUM (
-                    'UTC-8 (Pacific Time)',
-                    'UTC-7 (Mountain Time)',
-                    'UTC-6 (Central Time)',
-                    'UTC-5 (Eastern Time)',
-                    'UTC-3 (Argentina Time)',
-                    'UTC+0 (London Time)',
-                    'UTC+1 (Central European Time)'
-                );
-            END IF;
-        END $$;
-        """
-    )
-    op.execute(
-        """
-        DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'alerttype') THEN
-                CREATE TYPE alerttype AS ENUM (
-                    'spending_limit',
-                    'merchant_watch',
-                    'category_budget',
-                    'unusual_spending',
-                    'large_transaction',
-                    'new_merchant',
-                    'budget_exceeded'
-                );
-            END IF;
-        END $$;
-        """
-    )
-    op.execute(
-        """
-        DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'alertseverity') THEN
-                CREATE TYPE alertseverity AS ENUM ('low','medium','high');
-            END IF;
-        END $$;
-        """
-    )
+    bind = op.get_bind()
+    dialect = bind.dialect.name
+
+    # Pre-create enums only on Postgres
+    if dialect == "postgresql":
+        op.execute(
+            """
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'currencyenum') THEN
+                    CREATE TYPE currencyenum AS ENUM ('USD','PEN','EUR','GBP');
+                END IF;
+            END $$;
+            """
+        )
+        op.execute(
+            """
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'timezoneenum') THEN
+                    CREATE TYPE timezoneenum AS ENUM (
+                        'UTC-8 (Pacific Time)',
+                        'UTC-7 (Mountain Time)',
+                        'UTC-6 (Central Time)',
+                        'UTC-5 (Eastern Time)',
+                        'UTC-3 (Argentina Time)',
+                        'UTC+0 (London Time)',
+                        'UTC+1 (Central European Time)'
+                    );
+                END IF;
+            END $$;
+            """
+        )
+        op.execute(
+            """
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'alerttype') THEN
+                    CREATE TYPE alerttype AS ENUM (
+                        'spending_limit',
+                        'merchant_watch',
+                        'category_budget',
+                        'unusual_spending',
+                        'large_transaction',
+                        'new_merchant',
+                        'budget_exceeded'
+                    );
+                END IF;
+            END $$;
+            """
+        )
+        op.execute(
+            """
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'alertseverity') THEN
+                    CREATE TYPE alertseverity AS ENUM ('low','medium','high');
+                END IF;
+            END $$;
+            """
+        )
 
     # users
     op.create_table(
@@ -241,11 +245,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    # After creating tables, alter relevant columns to use the pre-created ENUM types.
-    op.execute("ALTER TABLE users ALTER COLUMN preferred_currency TYPE currencyenum USING preferred_currency::currencyenum")
-    op.execute("ALTER TABLE users ALTER COLUMN timezone TYPE timezoneenum USING timezone::timezoneenum")
-    op.execute("ALTER TABLE alerts ALTER COLUMN alert_type TYPE alerttype USING alert_type::alerttype")
-    op.execute("ALTER TABLE alerts ALTER COLUMN severity TYPE alertseverity USING severity::alertseverity")
+    # After creating tables, alter relevant columns to use the pre-created ENUM types on Postgres only.
+    if dialect == "postgresql":
+        op.execute("ALTER TABLE users ALTER COLUMN preferred_currency TYPE currencyenum USING preferred_currency::currencyenum")
+        op.execute("ALTER TABLE users ALTER COLUMN timezone TYPE timezoneenum USING timezone::timezoneenum")
+        op.execute("ALTER TABLE alerts ALTER COLUMN alert_type TYPE alerttype USING alert_type::alerttype")
+        op.execute("ALTER TABLE alerts ALTER COLUMN severity TYPE alertseverity USING severity::alertseverity")
 
 
 
@@ -264,8 +269,11 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_users_email"), table_name="users")
     op.drop_table("users")
 
-    # Drop enums if they exist
-    op.execute("DROP TYPE IF EXISTS alertseverity CASCADE;")
-    op.execute("DROP TYPE IF EXISTS alerttype CASCADE;")
-    op.execute("DROP TYPE IF EXISTS timezoneenum CASCADE;")
-    op.execute("DROP TYPE IF EXISTS currencyenum CASCADE;")
+    bind = op.get_bind()
+    dialect = bind.dialect.name
+    if dialect == "postgresql":
+        # Drop enums if they exist
+        op.execute("DROP TYPE IF EXISTS alertseverity CASCADE;")
+        op.execute("DROP TYPE IF EXISTS alerttype CASCADE;")
+        op.execute("DROP TYPE IF EXISTS timezoneenum CASCADE;")
+        op.execute("DROP TYPE IF EXISTS currencyenum CASCADE;")
