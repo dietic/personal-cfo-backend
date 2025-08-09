@@ -10,11 +10,15 @@ class StatementBase(BaseModel):
 class StatementCreate(StatementBase):
     file_path: str
     statement_month: Optional[date] = None
+    # Optional association to a card at creation time
+    card_id: Optional[uuid.UUID] = None
 
 class Statement(StatementBase):
     id: uuid.UUID
     user_id: uuid.UUID
     file_path: str
+    # Related card for this statement (optional)
+    card_id: Optional[uuid.UUID] = None
     statement_month: Optional[date] = None
     status: str
     extraction_status: str

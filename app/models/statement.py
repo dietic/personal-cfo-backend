@@ -16,6 +16,7 @@ class Statement(Base):
     file_path = Column(String, nullable=False)
     file_type = Column(String, nullable=False)  # pdf, csv
     statement_month = Column(Date)  # Month this statement covers (first day of month)
+    card_id = Column(GUID(), ForeignKey("cards.id"), nullable=True)  # Link statement to a card (optional, some legacy statements may not have a direct card)
     status = Column(String, default="uploaded")  # uploaded, extracting, extracted, categorizing, completed, failed, pending
     task_id = Column(String, nullable=True)  # Celery task ID for background processing
     processing_message = Column(String, nullable=True)  # User-friendly processing status message
@@ -40,6 +41,7 @@ class Statement(Base):
     user = relationship("User", back_populates="statements")
     alerts = relationship("Alert", back_populates="statement", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="statement", cascade="all, delete-orphan")
+    card = relationship("Card", lazy="joined", foreign_keys=[card_id])  # Optional relationship to Card
 
     @property
     def retry_count(self) -> str:

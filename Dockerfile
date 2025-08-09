@@ -22,8 +22,8 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 # Copy app source
 COPY personal-cfo-backend /app
 
-# Remove only legacy Alembic revisions; keep all 20250808_* (baseline + follow-ups)
-RUN find /app/alembic/versions -type f -name '*.py' ! -name '20250808_*' -delete || true
+# Keep only squashed baseline and forward migrations to avoid duplicate base branches
+RUN find /app/alembic/versions -type f -name '*.py' ! -name '20250808_*' ! -name '20250809_*' -delete || true
 
 # Expose uploads dir and alembic
 ENV UPLOAD_DIR=/app/uploads

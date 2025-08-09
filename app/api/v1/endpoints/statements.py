@@ -363,6 +363,8 @@ async def upload_statement_simple_async(
             transactions_count=0,
             is_processed=False,
             user_id=current_user.id,
+            # Store selected card on the statement for UI display
+            card_id=card_id,
             created_at=datetime.now(timezone.utc)
         )
 
@@ -553,7 +555,9 @@ async def upload_statement(
         filename=file.filename,
         file_path=file_path,
         file_type=file_extension,
-        status="uploaded"
+        status="uploaded",
+        # Save card id if provided
+        card_id=card_id
     )
 
     db.add(statement)
@@ -614,6 +618,13 @@ async def process_statement(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Card not found"
         )
+
+    # Persist the selected card on the statement for UI display
+    try:
+      statement.card_id = card.id
+      db.commit()
+    except Exception:
+      db.rollback()
 
     # Process statement using AI extraction
     try:
@@ -830,6 +841,8 @@ async def upload_statement_simple(
             extraction_status="in_progress",
             categorization_status="in_progress",
             is_processed=False,
+            # Persist selected card on the statement
+            card_id=card.id,
             created_at=datetime.utcnow()
         )
 
@@ -940,6 +953,8 @@ async def upload_statement_background(
             processing_message="Queued for processing...",
             transactions_count=0,
             user_id=current_user.id,
+            # Persist selected card on the statement
+            card_id=card.id,
             created_at=datetime.utcnow()
         )
 
