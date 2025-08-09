@@ -16,14 +16,14 @@ router = APIRouter()
 async def register(user_create: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
     user_service = UserService(db)
-    
+
     # Check if user already exists
     if user_service.get_user_by_email(user_create.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-    
+
     user = user_service.create_user(user_create)
     return user
 
@@ -63,7 +63,7 @@ async def resend_otp(payload: OTPResendRequest, db: Session = Depends(get_db)):
 async def login(user_login: UserLogin, db: Session = Depends(get_db)):
     """Login user and return access token"""
     user_service = UserService(db)
-    
+
     user = user_service.authenticate_user(user_login.email, user_login.password)
     if not user:
         raise HTTPException(
@@ -80,12 +80,12 @@ async def login(user_login: UserLogin, db: Session = Depends(get_db)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail=detail
         )
-    
+
     access_token_expires = timedelta(minutes=30)
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
-    
+
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/refresh", response_model=Token)
@@ -95,7 +95,7 @@ async def refresh_token(current_user: UserProfile = Depends(get_current_user)):
     access_token = create_access_token(
         data={"sub": current_user.email}, expires_delta=access_token_expires
     )
-    
+
     return {"access_token": access_token, "token_type": "bearer"}
 
 # Import here to avoid circular imports
