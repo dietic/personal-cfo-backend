@@ -17,7 +17,9 @@ class NotFoundError(BaseAppException):
 
 class ValidationError(BaseAppException):
     """Raised when validation fails"""
-    pass
+    def __init__(self, message: str, details: str = None, error_code: str = None):
+        super().__init__(message, details)
+        self.error_code = error_code
 
 
 class AuthenticationError(BaseAppException):

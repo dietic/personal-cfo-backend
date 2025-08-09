@@ -12,7 +12,21 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from app.core.config import settings
 from app.core.database import Base
-from app.models import user, card, transaction, recurring_service, budget, statement
+# Explicitly import all models so metadata contains all tables
+from app.models import (
+    user,
+    card,
+    transaction,
+    recurring_service,
+    budget,
+    statement,
+    alert,
+    category,
+    category_keyword,
+    bank_provider,
+    user_excluded_keyword,
+    user_keyword_rule,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -66,7 +80,7 @@ def run_migrations_online() -> None:
     """
     # Override the sqlalchemy.url with our settings
     config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
-    
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",

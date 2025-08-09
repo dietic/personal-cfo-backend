@@ -29,28 +29,36 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
-    
+    is_admin = Column(Boolean, default=False)
+
     # Profile Information
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     phone_number = Column(String, nullable=True)
     profile_picture_url = Column(String, nullable=True)
-    
+
     # Preferences
-    preferred_currency = Column(SQLEnum(CurrencyEnum), default=CurrencyEnum.USD)
-    timezone = Column(SQLEnum(TimezoneEnum), default=TimezoneEnum.UTC_MINUS_8)
-    
+    preferred_currency = Column(SQLEnum(CurrencyEnum, name="currencyenum"), default=CurrencyEnum.USD)
+    timezone = Column(
+        SQLEnum(
+            TimezoneEnum,
+            name="timezoneenum",
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        default=TimezoneEnum.UTC_MINUS_8,
+    )
+
     # Notification Preferences
     budget_alerts_enabled = Column(Boolean, default=True)
     payment_reminders_enabled = Column(Boolean, default=True)
     transaction_alerts_enabled = Column(Boolean, default=False)
     weekly_summary_enabled = Column(Boolean, default=True)
     monthly_reports_enabled = Column(Boolean, default=True)
-    
+
     # Delivery Methods
     email_notifications_enabled = Column(Boolean, default=True)
     push_notifications_enabled = Column(Boolean, default=False)
-    
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

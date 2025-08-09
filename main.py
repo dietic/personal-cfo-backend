@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.gzip import GZipMiddleware
 import os
 from dotenv import load_dotenv
 
@@ -8,9 +9,19 @@ from app.core.config import settings
 from app.api.v1.api import api_router
 from app.core.database import engine
 from app.models import base
+from app.core.database import SessionLocal
+from app.services.seeding_service import SeedingService
 
 # Load environment variables
 load_dotenv()
+
+# PATCH: Apply optimized BCP extraction
+def apply_bcp_extraction_patch():
+    """Clean extractor is now integrated - no patch needed"""
+    print("✅ Using CleanAIStatementExtractor for improved BCP extraction")
+
+# Use clean extractor instead of patching
+apply_bcp_extraction_patch()
 
 # Create uploads directory if it doesn't exist
 os.makedirs("uploads", exist_ok=True)
@@ -38,7 +49,7 @@ api_description = """
 ### 🤖 AI Endpoints for Integration
 
 - `POST /ai/categorize-transaction` - Classify transactions
-- `POST /ai/analyze-spending` - Generate spending insights  
+- `POST /ai/analyze-spending` - Generate spending insights
 - `POST /ai/detect-anomalies` - Identify unusual patterns
 - `POST /statements/{id}/categorize` - Bulk transaction classification
 
@@ -46,7 +57,7 @@ api_description = """
 
 1. **Check Categories**: `GET /categories/validate-minimum`
 2. **Upload PDF**: `POST /statements/upload`
-3. **Extract Data**: `POST /statements/{id}/extract`  
+3. **Extract Data**: `POST /statements/{id}/extract`
 4. **Categorize**: `POST /statements/{id}/categorize`
 5. **Monitor Status**: `GET /statements/{id}/status`
 
@@ -65,6 +76,9 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# GZip compression for large JSON responses
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
 # Set up CORS
 app.add_middleware(
     CORSMiddleware,
@@ -79,6 +93,20 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
+
+# --- Idempotent seeding on startup ---
+@app.on_event("startup")
+def seed_on_startup():
+    db = SessionLocal()
+    try:
+        added = SeedingService.seed_bank_providers(db)
+        stats = SeedingService.backfill_user_categories_and_keywords(db)
+        print(f"🪴 Seeding complete: bank_providers +{added}; backfill {stats}")
+    except Exception as e:
+        # Do not block startup if seeding fails; just log
+        print(f"⚠️ Seeding error: {e}")
+    finally:
+        db.close()
 
 @app.get("/")
 async def root():

@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from typing import List
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 import uuid
+import time
 
 from app.core.database import get_db
 from app.core.deps import get_current_active_user
@@ -15,6 +16,25 @@ from app.models.card import Card
 from app.schemas.budget import BudgetCreate, BudgetUpdate, Budget as BudgetSchema, BudgetAlert
 
 router = APIRouter()
+
+# Simple in-memory cache for budget alerts (short TTL)
+class _TtlCache:
+    def __init__(self, ttl_seconds: int = 15):
+        self.ttl = ttl_seconds
+        self.store = {}
+    def get(self, key):
+        item = self.store.get(key)
+        if not item:
+            return None
+        ts, data = item
+        if time.time() - ts > self.ttl:
+            self.store.pop(key, None)
+            return None
+        return data
+    def set(self, key, data):
+        self.store[key] = (time.time(), data)
+
+_budget_alerts_cache = _TtlCache(15)
 
 @router.get("/", response_model=List[BudgetSchema])
 async def get_budgets(
@@ -38,13 +58,13 @@ async def create_budget(
         Budget.category == budget_create.category,
         Budget.month == budget_create.month
     ).first()
-    
+
     if existing_budget:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Budget already exists for this category and month"
         )
-    
+
     budget = Budget(**budget_create.dict(), user_id=current_user.id)
     db.add(budget)
     db.commit()
@@ -57,26 +77,32 @@ async def get_budget_alerts(
     db: Session = Depends(get_db)
 ):
     """Get budget alerts for overspending"""
+    cache_key = (current_user.id,)
+    cached = _budget_alerts_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     current_month = date.today().replace(day=1)
-    
+    next_month = (current_month + timedelta(days=32)).replace(day=1)
+
     budgets = db.query(Budget).filter(
         Budget.user_id == current_user.id,
         Budget.month == current_month
     ).all()
-    
+
     alerts = []
-    
+
     for budget in budgets:
-        # Calculate current spending for this category
+        # Calculate current spending for this category within the current month using date range
         spending = db.query(func.sum(Transaction.amount)).join(Card).filter(
             Card.user_id == current_user.id,
             Transaction.category == budget.category,
-            func.extract('year', Transaction.transaction_date) == current_month.year,
-            func.extract('month', Transaction.transaction_date) == current_month.month
+            Transaction.transaction_date >= current_month,
+            Transaction.transaction_date < next_month
         ).scalar() or Decimal('0')
-        
-        percentage_used = float(spending) / float(budget.limit_amount) * 100
-        
+
+        percentage_used = float(spending) / float(budget.limit_amount) * 100 if float(budget.limit_amount) > 0 else 0
+
         # Generate alerts for 90% and 100% thresholds
         if percentage_used >= 100:
             alerts.append(BudgetAlert(
@@ -92,7 +118,8 @@ async def get_budget_alerts(
                 percentage_used=percentage_used,
                 alert_type="warning"
             ))
-    
+
+    _budget_alerts_cache.set(cache_key, alerts)
     return alerts
 
 @router.get("/{budget_id}", response_model=BudgetSchema)
@@ -106,7 +133,7 @@ async def get_budget(
         Budget.id == budget_id,
         Budget.user_id == current_user.id
     ).first()
-    
+
     if not budget:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -127,17 +154,17 @@ async def update_budget(
         Budget.id == budget_id,
         Budget.user_id == current_user.id
     ).first()
-    
+
     if not budget:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Budget not found"
         )
-    
+
     update_data = budget_update.dict(exclude_unset=True)
     for field, value in update_data.items():
         setattr(budget, field, value)
-    
+
     db.commit()
     db.refresh(budget)
     return budget
@@ -153,13 +180,13 @@ async def delete_budget(
         Budget.id == budget_id,
         Budget.user_id == current_user.id
     ).first()
-    
+
     if not budget:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Budget not found"
         )
-    
+
     db.delete(budget)
     db.commit()
     return {"message": "Budget deleted successfully"}

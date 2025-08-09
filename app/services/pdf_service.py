@@ -1,0 +1,519 @@
+"""
+Enhanced PDF Service for handling password-protected PDFs with multiple library fallbacks
+"""
+
+import io
+import logging
+from typing import Optional, Tuple, Dict, Any
+import PyPDF2
+import fitz  # PyMuPDF
+import pdfplumber
+import pikepdf  # QPDF-backed
+
+logger = logging.getLogger(__name__)
+
+
+class PDFService:
+    """Enhanced service for handling PDF operations with multiple library fallbacks"""
+
+    @staticmethod
+    def is_pdf_encrypted(file_content: bytes) -> bool:
+        """
+        Check if PDF is encrypted using multiple approaches.
+        """
+        try:
+            # Method 1: Try PyMuPDF first (most robust)
+            doc = fitz.open(stream=file_content, filetype="pdf")
+            is_encrypted = doc.needs_pass
+            doc.close()
+            logger.info(f"PyMuPDF encryption check: {is_encrypted}")
+            return is_encrypted
+        except Exception as e:
+            logger.warning(f"PyMuPDF encryption check failed: {str(e)}")
+
+        try:
+            # Method 2: Try PyPDF2
+            pdf_file = io.BytesIO(file_content)
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            is_encrypted = pdf_reader.is_encrypted
+            logger.info(f"PyPDF2 encryption check: {is_encrypted}")
+            return is_encrypted
+        except Exception as e:
+            logger.warning(f"PyPDF2 encryption check failed: {str(e)}")
+
+        try:
+            # Method 3: Try pdfplumber
+            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+                # If we can open it without error, it's likely not encrypted
+                # pdfplumber doesn't have direct encryption detection
+                if hasattr(pdf, 'metadata') and pdf.metadata:
+                    # Look for encryption in metadata
+                    for value in pdf.metadata.values():
+                        if value and 'encrypt' in str(value).lower():
+                            logger.info("pdfplumber detected encryption in metadata")
+                            return True
+        except Exception as e:
+            logger.warning(f"pdfplumber encryption check failed: {str(e)}")
+
+        # Method 4: Manual detection as final fallback
+        try:
+            content_str = file_content.decode('latin-1', errors='ignore')
+            encryption_indicators = [
+                '/Encrypt',
+                '/Filter /Standard',
+                '/Filter/Standard',
+                'endobj\n/Encrypt',
+                '/O <',
+                '/U <'
+            ]
+
+            for indicator in encryption_indicators:
+                if indicator in content_str:
+                    logger.info(f"Manual encryption detection: Found indicator '{indicator}'")
+                    return True
+        except Exception as e:
+            logger.warning(f"Manual encryption detection failed: {str(e)}")
+
+        logger.info("All encryption detection methods exhausted. Assuming not encrypted.")
+        return False
+
+    @staticmethod
+    def validate_pdf_access(file_content: bytes) -> Dict[str, Any]:
+        """
+        Validate if PDF can be accessed/read without password using multiple PDF libraries
+        """
+        result = {
+            "encrypted": False,
+            "accessible": False,
+            "needs_password": False,
+            "error": None
+        }
+
+        try:
+            # Check if encrypted
+            is_encrypted = PDFService.is_pdf_encrypted(file_content)
+            result["encrypted"] = is_encrypted
+
+            if not is_encrypted:
+                # Test if we can actually read it
+                readable = PDFService._test_pdf_readability(file_content)
+                result["accessible"] = readable
+                result["needs_password"] = not readable
+                return result
+
+            # PDF is encrypted, test if accessible without password
+            result["accessible"] = False
+            result["needs_password"] = True
+
+        except Exception as e:
+            result["error"] = f"PDF validation failed: {str(e)}"
+            logger.error(f"PDF validation error: {str(e)}")
+
+        return result
+
+    @staticmethod
+    def _test_pdf_readability(file_content: bytes) -> bool:
+        """Test if PDF can be read using multiple libraries"""
+
+        # Test with PyMuPDF
+        try:
+            doc = fitz.open(stream=file_content, filetype="pdf")
+            if len(doc) > 0:
+                page = doc[0]
+                page.get_text()  # Test if we can extract text
+                doc.close()
+                logger.info("PyMuPDF successfully read PDF")
+                return True
+        except Exception as e:
+            logger.warning(f"PyMuPDF readability test failed: {str(e)}")
+
+        # Test with pdfplumber
+        try:
+            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+                if len(pdf.pages) > 0:
+                    logger.info("pdfplumber successfully read PDF")
+                    return True
+        except Exception as e:
+            logger.warning(f"pdfplumber readability test failed: {str(e)}")
+
+        # Test with PyPDF2
+        try:
+            pdf_file = io.BytesIO(file_content)
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            if len(pdf_reader.pages) > 0:
+                logger.info("PyPDF2 successfully read PDF")
+                return True
+        except Exception as e:
+            logger.warning(f"PyPDF2 readability test failed: {str(e)}")
+
+        logger.warning("All PDF readability tests failed")
+        return False
+
+    @staticmethod
+    def unlock_pdf(file_content: bytes, password: str) -> Tuple[bool, bytes, str]:
+        """
+        Attempt to unlock an encrypted PDF using multiple PDF libraries.
+        Returns (success, unlocked_content, error_message)
+        """
+        logger.info(f"Attempting to unlock PDF with password length: {len(password)}")
+
+        # First check if it's actually encrypted
+        if not PDFService.is_pdf_encrypted(file_content):
+            logger.info("PDF is not encrypted, returning original content")
+            return True, file_content, "PDF is not encrypted"
+
+        # Method 1: Try PyMuPDF (most robust for problematic PDFs)
+        logger.info("Trying PyMuPDF unlock...")
+        success, content, error = PDFService._unlock_with_pymupdf(file_content, password)
+        if success:
+            logger.info("PyMuPDF unlock successful")
+            return success, content, error
+        else:
+            logger.warning(f"PyMuPDF unlock failed: {error}")
+
+        # Method 2: Try pikepdf (QPDF) to decrypt and rewrite bytes
+        logger.info("Trying pikepdf (QPDF) unlock...")
+        success, content, error = PDFService._unlock_with_pikepdf(file_content, password)
+        if success:
+            logger.info("pikepdf unlock successful")
+            return success, content, error
+        else:
+            logger.warning(f"pikepdf unlock failed: {error}")
+
+        # Method 3: Try PyPDF2 (fallback)
+        logger.info("Trying PyPDF2 unlock...")
+        success, content, error = PDFService._unlock_with_pypdf2(file_content, password)
+        if success:
+            logger.info("PyPDF2 unlock successful")
+            return success, content, error
+        else:
+            logger.warning(f"PyPDF2 unlock failed: {error}")
+
+        # Method 4: Try pdfplumber (alternative fallback)
+        logger.info("Trying pdfplumber unlock...")
+        success, content, error = PDFService._unlock_with_pdfplumber(file_content, password)
+        if success:
+            logger.info("pdfplumber unlock successful")
+            return success, content, error
+        else:
+            logger.warning(f"pdfplumber unlock failed: {error}")
+
+        # All methods failed
+        final_error = f"Failed to unlock PDF with all available methods. This may indicate file corruption or an unsupported encryption method. Last error: {error}"
+        logger.error(final_error)
+        return False, b"", final_error
+
+    @staticmethod
+    def _unlock_with_pymupdf(file_content: bytes, password: str) -> Tuple[bool, bytes, str]:
+        """Unlock PDF using PyMuPDF with authenticate() and strict validation."""
+        try:
+            # Open without password and authenticate if required
+            doc = fitz.open(stream=file_content, filetype="pdf")
+            try:
+                if getattr(doc, "needs_pass", False):
+                    if not doc.authenticate(password):
+                        return False, b"", "Invalid password provided"
+                # Export fully unencrypted bytes; prefer tobytes to avoid zero-page save issues
+                try:
+                    unlocked_content = doc.tobytes(encryption=fitz.PDF_ENCRYPT_NONE)
+                except Exception as e:
+                    # Last resort: copy pages one by one
+                    try:
+                        new_doc = fitz.open()
+                        for i in range(len(doc)):
+                            new_doc.insert_pdf(doc, from_page=i, to_page=i)
+                        unlocked_content = new_doc.tobytes()
+                        new_doc.close()
+                    except Exception as ce:
+                        return False, b"", f"PyMuPDF unlock failed: {str(ce)}"
+            finally:
+                doc.close()
+
+            # Validate the produced bytes: reopen, must have pages and not require password
+            try:
+                vdoc = fitz.open(stream=unlocked_content, filetype="pdf")
+                needs = getattr(vdoc, "needs_pass", False)
+                pages = len(vdoc)
+                vdoc.close()
+                if needs:
+                    return False, b"", "PyMuPDF unlock produced bytes that still require a password"
+                if pages == 0:
+                    return False, b"", "PyMuPDF unlock produced zero-page PDF"
+            except Exception as ve:
+                return False, b"", f"PyMuPDF unlock produced invalid bytes: {ve}"
+
+            return True, unlocked_content, "PDF unlocked successfully with PyMuPDF"
+
+        except Exception as e:
+            logger.warning(f"PyMuPDF unlock failed: {str(e)}")
+            return False, b"", f"PyMuPDF unlock failed: {str(e)}"
+
+    @staticmethod
+    def _unlock_with_pikepdf(file_content: bytes, password: str) -> Tuple[bool, bytes, str]:
+        """Unlock PDF using pikepdf (QPDF) and return valid decrypted bytes with strict validation."""
+        try:
+            from io import BytesIO
+            with pikepdf.open(BytesIO(file_content), password=password) as pdf:
+                buf = BytesIO()
+                # Save without specifying encryption to strip it entirely
+                pdf.save(buf, linearize=True)
+                unlocked_content = buf.getvalue()
+
+            # Validate by reopening with PyMuPDF and ensuring not encrypted
+            try:
+                vdoc = fitz.open(stream=unlocked_content, filetype="pdf")
+                needs = getattr(vdoc, "needs_pass", False)
+                pages = len(vdoc)
+                vdoc.close()
+                if needs:
+                    return False, b"", "pikepdf produced bytes that still require a password"
+                if pages == 0:
+                    return False, b"", "pikepdf produced zero-page PDF"
+            except Exception as ve:
+                return False, b"", f"pikepdf produced invalid bytes: {ve}"
+
+            return True, unlocked_content, "PDF unlocked successfully with pikepdf"
+        except pikepdf.PasswordError:
+            return False, b"", "Invalid password provided"
+        except Exception as e:
+            return False, b"", f"pikepdf unlock failed: {e}"
+
+    @staticmethod
+    def _unlock_with_pypdf2(file_content: bytes, password: str) -> Tuple[bool, bytes, str]:
+        """Unlock PDF using PyPDF2"""
+        try:
+            pdf_file = io.BytesIO(file_content)
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+
+            if not pdf_reader.is_encrypted:
+                # Build a clean, unencrypted copy
+                pdf_writer = PyPDF2.PdfWriter()
+                for page_num in range(len(pdf_reader.pages)):
+                    page = pdf_reader.pages[page_num]
+                    pdf_writer.add_page(page)
+                output_stream = io.BytesIO()
+                pdf_writer.write(output_stream)
+                unlocked_content = output_stream.getvalue()
+                # Validate
+                try:
+                    vdoc = fitz.open(stream=unlocked_content, filetype="pdf")
+                    needs = getattr(vdoc, "needs_pass", False)
+                    pages = len(vdoc)
+                    vdoc.close()
+                    if needs or pages == 0:
+                        return False, b"", "PyPDF2 pass-through produced invalid bytes"
+                except Exception as ve:
+                    return False, b"", f"PyPDF2 pass-through invalid bytes: {ve}"
+                return True, unlocked_content, "PDF is not encrypted"
+
+            # Attempt to decrypt with password
+            decrypt_result = pdf_reader.decrypt(password)
+
+            if decrypt_result == 0:
+                return False, b"", "Incorrect password provided"
+            elif decrypt_result == 1:
+                # Successfully decrypted, create unlocked PDF
+                pdf_writer = PyPDF2.PdfWriter()
+
+                # Copy all pages to new PDF
+                for page_num in range(len(pdf_reader.pages)):
+                    page = pdf_reader.pages[page_num]
+                    pdf_writer.add_page(page)
+
+                # Write to bytes
+                output_stream = io.BytesIO()
+                pdf_writer.write(output_stream)
+                unlocked_content = output_stream.getvalue()
+
+                # Validate
+                try:
+                    vdoc = fitz.open(stream=unlocked_content, filetype="pdf")
+                    needs = getattr(vdoc, "needs_pass", False)
+                    pages = len(vdoc)
+                    vdoc.close()
+                    if needs or pages == 0:
+                        return False, b"", "PyPDF2 unlock produced invalid bytes"
+                except Exception as ve:
+                    return False, b"", f"PyPDF2 unlock invalid bytes: {ve}"
+
+                return True, unlocked_content, "PDF unlocked successfully with PyPDF2"
+            else:
+                return False, b"", "Unknown decryption result"
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.warning(f"PyPDF2 unlock failed: {error_msg}")
+
+            if "incorrect startxref pointer" in error_msg.lower():
+                return False, b"", "PDF has structural corruption that prevents PyPDF2 processing"
+            elif "password" in error_msg.lower():
+                return False, b"", "Invalid password provided"
+            else:
+                return False, b"", f"PyPDF2 unlock failed: {error_msg}"
+
+    @staticmethod
+    def _unlock_with_pdfplumber(file_content: bytes, password: str) -> Tuple[bool, bytes, str]:
+        """Unlock PDF using pdfplumber (limited). Do not return encrypted bytes as success."""
+        try:
+            with pdfplumber.open(io.BytesIO(file_content), password=password) as pdf:
+                if len(pdf.pages) > 0:
+                    # We can open it with the password, but cannot emit decrypted bytes reliably
+                    return False, b"", "pdfplumber opened with password but cannot produce decrypted bytes"
+        except Exception as e:
+            logger.warning(f"pdfplumber unlock failed: {str(e)}")
+            return False, b"", f"pdfplumber unlock failed: {str(e)}"
+        return False, b"", "pdfplumber could not open PDF with password"
+
+    @staticmethod
+    def extract_text_from_pdf(file_content: bytes, password: Optional[str] = None) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        Extract text content from a PDF file using multiple libraries
+
+        Args:
+            file_content: PDF file content as bytes
+            password: Optional password if PDF is encrypted
+
+        Returns:
+            Tuple of (success: bool, text_content: Optional[str], error: Optional[str])
+        """
+        # 0) If a password is provided, first try to extract text directly with password (no unlock step)
+        if password:
+            # Try PyMuPDF by opening then authenticating
+            try:
+                doc = fitz.open(stream=file_content, filetype="pdf")
+                if getattr(doc, "needs_pass", False):
+                    if doc.authenticate(password):
+                        page_count = len(doc)
+                        text_content = ""
+                        for page in doc:
+                            try:
+                                text_content += page.get_text() + "\n"
+                            except Exception as pe:
+                                logger.warning(f"PyMuPDF (authenticate) page text error: {pe}")
+                        doc.close()
+                        if text_content.strip():
+                            logger.info(f"PyMuPDF (authenticate) extracted text: pages={page_count}, length={len(text_content)}")
+                            return True, text_content, None
+                    else:
+                        logger.info("PyMuPDF authenticate() returned False with provided password")
+                        doc.close()
+                else:
+                    # Not encrypted; proceed below without password
+                    doc.close()
+            except Exception as e:
+                logger.warning(f"PyMuPDF text extraction with password failed: {str(e)}")
+
+            # Try pdfplumber with password
+            try:
+                with pdfplumber.open(io.BytesIO(file_content), password=password) as pdf:
+                    text_content = ""
+                    for page in pdf.pages:
+                        try:
+                            page_text = page.extract_text()
+                            if page_text:
+                                text_content += page_text + "\n"
+                        except Exception as pe:
+                            logger.warning(f"pdfplumber (password) page text error: {pe}")
+                    if text_content.strip():
+                        logger.info(f"pdfplumber (password) extracted text: pages={len(pdf.pages)}, length={len(text_content)}")
+                        return True, text_content, None
+            except Exception as e:
+                logger.warning(f"pdfplumber text extraction with password failed: {str(e)}")
+
+            # Try PyPDF2 with password
+            try:
+                pdf_file = io.BytesIO(file_content)
+                pdf_reader = PyPDF2.PdfReader(pdf_file)
+                if pdf_reader.is_encrypted:
+                    decrypt_result = pdf_reader.decrypt(password)
+                    if decrypt_result in (1, True):
+                        text_content = ""
+                        for page in pdf_reader.pages:
+                            try:
+                                page_text = page.extract_text()
+                                if page_text:
+                                    text_content += page_text + "\n"
+                            except Exception as pe:
+                                logger.warning(f"PyPDF2 (password) page text error: {pe}")
+                        if text_content.strip():
+                            logger.info(f"PyPDF2 (password) extracted text: pages={len(pdf_reader.pages)}, length={len(text_content)}")
+                            return True, text_content, None
+                    else:
+                        logger.info("PyPDF2 decrypt() failed with provided password")
+            except Exception as e:
+                logger.warning(f"PyPDF2 text extraction with password failed: {str(e)}")
+
+        # 1) If we got here and a password is provided, try to unlock to produce decrypted bytes
+        if password:
+            unlock_success, unlocked_content, unlock_error = PDFService.unlock_pdf(file_content, password)
+            if unlock_success:
+                file_content = unlocked_content
+                # Safety: verify not encrypted
+                try:
+                    vdoc = fitz.open(stream=file_content, filetype="pdf")
+                    if getattr(vdoc, "needs_pass", False):
+                        vdoc.close()
+                        return False, None, "Unlocked PDF still requires a password"
+                    vdoc.close()
+                except Exception as ve:
+                    logger.warning(f"Post-unlock validation failed: {ve}")
+            else:
+                return False, None, f"Failed to unlock PDF: {unlock_error}"
+
+        # 2) Try PyMuPDF without password (on unlocked or original content)
+        try:
+            doc = fitz.open(stream=file_content, filetype="pdf")
+            text_content = ""
+            for page in doc:
+                try:
+                    text_content += page.get_text() + "\n"
+                except Exception as pe:
+                    logger.warning(f"PyMuPDF page text error: {pe}")
+            page_count = len(doc)
+            doc.close()
+
+            if text_content.strip():
+                logger.info(f"PyMuPDF extracted text: pages={page_count}, length={len(text_content)}")
+                return True, text_content, None
+        except Exception as e:
+            logger.warning(f"PyMuPDF text extraction failed: {str(e)}")
+
+        # 3) Try pdfplumber without password
+        try:
+            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+                text_content = ""
+                for page in pdf.pages:
+                    try:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text_content += page_text + "\n"
+                    except Exception as pe:
+                        logger.warning(f"pdfplumber page text error: {pe}")
+
+                if text_content.strip():
+                    logger.info(f"pdfplumber extracted text: pages={len(pdf.pages)}, length={len(text_content)}")
+                    return True, text_content, None
+        except Exception as e:
+            logger.warning(f"pdfplumber text extraction failed: {str(e)}")
+
+        # 4) Try PyPDF2 as last resort
+        try:
+            pdf_file = io.BytesIO(file_content)
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            text_content = ""
+
+            for page in pdf_reader.pages:
+                try:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_content += page_text + "\n"
+                except Exception as pe:
+                    logger.warning(f"PyPDF2 page text error: {pe}")
+
+            if text_content.strip():
+                logger.info(f"PyPDF2 extracted text: pages={len(pdf_reader.pages)}, length={len(text_content)}")
+                return True, text_content, None
+        except Exception as e:
+            logger.warning(f"PyPDF2 text extraction failed: {str(e)}")
+
+        return False, None, "Failed to extract text using all available PDF libraries"

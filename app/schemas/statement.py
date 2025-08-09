@@ -24,7 +24,7 @@ class Statement(StatementBase):
     is_processed: bool
     ai_insights: Optional[str] = None  # JSON string
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -62,10 +62,10 @@ class ExtractionRequest(BaseModel):
     def validate_statement_month(cls, v):
         if v is None or v == "":
             return None
-        
+
         if isinstance(v, date):
             return v
-            
+
         if isinstance(v, str):
             # Try to parse different date formats
             try:
@@ -97,7 +97,7 @@ class ExtractionRequest(BaseModel):
                     raise e
                 else:
                     raise ValueError(f"Invalid date format: '{v}'. Expected formats: YYYY-MM-DD, YYYY-MM, or month name (e.g., 'may', 'january')")
-        
+
         raise ValueError(f"Invalid date format: '{v}'. Expected string or date object")
 
 
@@ -125,3 +125,23 @@ class CategorizationResponse(BaseModel):
 
 class RetryRequest(BaseModel):
     step: str  # "extraction" or "categorization"
+
+
+class PDFStatusResponse(BaseModel):
+    """Response for PDF accessibility check"""
+    accessible: bool
+    encrypted: bool
+    needs_password: bool
+    error: Optional[str] = None
+
+
+class UnlockPDFRequest(BaseModel):
+    """Request to unlock a password-protected PDF"""
+    password: str
+
+
+class UnlockPDFResponse(BaseModel):
+    """Response for PDF unlock attempt"""
+    success: bool
+    message: str
+    statement_id: Optional[uuid.UUID] = None

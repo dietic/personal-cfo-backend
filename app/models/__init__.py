@@ -9,5 +9,20 @@ from app.models.statement import Statement
 from app.models.category import Category
 from app.models.category_keyword import CategoryKeyword
 from app.models.alert import Alert
+from app.models.user_excluded_keyword import UserExcludedKeyword
+from app.models.user_keyword_rule import UserKeywordRule
 
-__all__ = ["User", "BankProvider", "Card", "Transaction", "RecurringService", "Budget", "Statement", "Category", "CategoryKeyword", "Alert"]
+__all__ = [
+    "User",
+    "BankProvider",
+    "Card",
+    "Transaction",
+    "RecurringService",
+    "Budget",
+    "Statement",
+    "Category",
+    "CategoryKeyword",
+    "Alert",
+    "UserExcludedKeyword",
+    "UserKeywordRule",
+]

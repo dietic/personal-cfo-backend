@@ -3,7 +3,7 @@ Simplified Statement Service with OpenAI-driven extraction and categorization
 New approach: Extract + Categorize in one step using predefined Spanish categories
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 import json
 import uuid
@@ -17,36 +17,48 @@ from app.models.transaction import Transaction
 from app.models.category import Category
 from app.models.card import Card
 from app.services.ai_service import AIService
+from app.services.pdf_service import PDFService
 from app.core.exceptions import ValidationError, ProcessingError
 
 logger = logging.getLogger(__name__)
 
 
 class SimplifiedStatementService:
-    
+
     def __init__(self, db: Session):
         self.db = db
         self.ai_service = AIService()
-    
+
     def get_spanish_categories(self) -> List[str]:
         """Get all Spanish categories from database"""
         categories = self.db.query(Category).filter(Category.is_active == True).all()
         return [cat.name for cat in categories]
-    
-    def extract_text_from_pdf(self, file_content: bytes) -> str:
-        """Extract text from PDF using PyPDF2"""
-        try:
-            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
-            text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
-            return text.strip()
-        except Exception as e:
-            logger.error(f"Error extracting text from PDF: {str(e)}")
-            raise ProcessingError(f"Could not extract text from PDF: {str(e)}")
-    
+
+    def extract_text_from_pdf(self, file_content: bytes, password: Optional[str] = None) -> str:
+        """Extract text from PDF using PDFService with password support"""
+        success, text, error = PDFService.extract_text_from_pdf(file_content, password)
+
+        if not success:
+            if "password protected" in error.lower() or "encrypted" in error.lower():
+                raise ValidationError("PDF_PASSWORD_REQUIRED", error)
+            elif "structural issues" in error.lower() or "Root" in error:
+                # Handle PDFs that are unlocked but have structural problems
+                raise ProcessingError(f"PDF unlocked successfully but has structural issues that prevent text extraction: {error}")
+            else:
+                raise ProcessingError(f"Failed to extract text from PDF: {error}")
+
+        return text
+
+    def check_pdf_status(self, file_content: bytes) -> Dict[str, Any]:
+        """Check if PDF can be accessed or needs password"""
+        return PDFService.validate_pdf_access(file_content)
+
+    def unlock_pdf(self, file_content: bytes, password: str) -> Tuple[bool, Optional[bytes]]:
+        """Unlock a password-protected PDF"""
+        return PDFService.unlock_pdf(file_content, password)
+
     def extract_and_categorize_with_openai(
-        self, 
+        self,
         text_content: str,
         spanish_categories: List[str]
     ) -> List[Dict[str, Any]]:
@@ -54,7 +66,7 @@ class SimplifiedStatementService:
         Use OpenAI to extract and categorize transactions in one call
         """
         categories_text = ", ".join(spanish_categories)
-        
+
         prompt = f"""
 Analiza este estado de cuenta bancario y extrae TODAS las transacciones.
 
@@ -99,11 +111,11 @@ Estado de cuenta:
                 temperature=0.1,
                 max_tokens=4000
             )
-            
+
             content = response.choices[0].message.content
             if not content:
                 raise ProcessingError("Empty response from OpenAI")
-            
+
             # Parse JSON response
             try:
                 transactions = json.loads(content)
@@ -114,19 +126,19 @@ Estado de cuenta:
                 logger.error(f"Failed to parse OpenAI JSON response: {str(e)}")
                 logger.error(f"Response content: {content}")
                 raise ProcessingError(f"Invalid JSON response from OpenAI: {str(e)}")
-                
+
         except Exception as e:
             logger.error(f"OpenAI API error: {str(e)}")
             raise ProcessingError(f"Failed to process with OpenAI: {str(e)}")
-    
+
     def validate_extracted_transactions(
-        self, 
-        transactions: List[Dict], 
+        self,
+        transactions: List[Dict],
         valid_categories: List[str]
     ) -> List[Dict[str, Any]]:
         """Validate and clean extracted transactions"""
         validated = []
-        
+
         for i, txn in enumerate(transactions):
             try:
                 # Validate required fields
@@ -135,7 +147,7 @@ Estado de cuenta:
                     if field not in txn:
                         logger.warning(f"Transaction {i} missing field: {field}")
                         continue
-                
+
                 # Validate and convert date
                 try:
                     if isinstance(txn['transaction_date'], str):
@@ -145,26 +157,26 @@ Estado de cuenta:
                 except ValueError:
                     logger.warning(f"Invalid date format in transaction {i}: {txn['transaction_date']}")
                     continue
-                
+
                 # Validate amount
                 try:
                     amount = float(txn['amount'])
                 except (ValueError, TypeError):
                     logger.warning(f"Invalid amount in transaction {i}: {txn['amount']}")
                     continue
-                
+
                 # Validate category
                 category = txn['category']
                 if category not in valid_categories:
                     logger.warning(f"Invalid category '{category}' in transaction {i}, using 'Misc'")
                     category = 'Misc'
-                
+
                 # Validate currency
                 currency = txn.get('currency', 'USD')
                 if len(currency) != 3:
                     logger.warning(f"Invalid currency '{currency}' in transaction {i}, using 'USD'")
                     currency = 'USD'
-                
+
                 validated.append({
                     'transaction_date': txn_date,
                     'description': str(txn['description']).strip(),
@@ -172,17 +184,18 @@ Estado de cuenta:
                     'currency': currency.upper(),
                     'category': category
                 })
-                
+
             except Exception as e:
                 logger.warning(f"Error validating transaction {i}: {str(e)}")
                 continue
-        
+
         return validated
-    
+
     def process_statement_new_approach(
-        self, 
+        self,
         statement_id: uuid.UUID,
-        file_content: bytes
+        file_content: bytes,
+        password: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Process statement with new approach: extract + categorize in one step
@@ -192,47 +205,47 @@ Estado de cuenta:
             statement = self.db.query(Statement).filter(Statement.id == statement_id).first()
             if not statement:
                 raise ValidationError(f"Statement {statement_id} not found")
-            
+
             # Update status
             statement.status = "processing"
             statement.extraction_status = "in_progress"
             statement.categorization_status = "in_progress"
             self.db.commit()
-            
+
             # Get Spanish categories
             spanish_categories = self.get_spanish_categories()
             if not spanish_categories:
                 raise ProcessingError("No Spanish categories available in database")
-            
+
             logger.info(f"Found {len(spanish_categories)} Spanish categories for processing")
-            
+
             # Extract text from PDF
             if statement.file_type.lower() == 'pdf':
-                text_content = self.extract_text_from_pdf(file_content)
+                text_content = self.extract_text_from_pdf(file_content, password)
             else:
                 text_content = file_content.decode('utf-8')
-            
+
             # Extract and categorize with OpenAI
             transactions_data = self.extract_and_categorize_with_openai(
                 text_content, spanish_categories
             )
-            
+
             # Validate transactions
             validated_transactions = self.validate_extracted_transactions(
                 transactions_data, spanish_categories
             )
-            
+
             if not validated_transactions:
                 raise ProcessingError("No valid transactions extracted")
-            
+
             # Get user's cards for transaction creation
             user_cards = self.db.query(Card).filter(Card.user_id == statement.user_id).all()
             if not user_cards:
                 raise ValidationError("User has no cards configured")
-            
+
             # Use first card as default
             default_card = user_cards[0]
-            
+
             # Create Transaction objects
             created_transactions = []
             for txn_data in validated_transactions:
@@ -247,10 +260,10 @@ Estado de cuenta:
                     description=txn_data['description'],
                     ai_confidence=0.95  # High confidence for AI categorization
                 )
-                
+
                 self.db.add(transaction)
                 created_transactions.append(transaction)
-            
+
             # Store processed transactions as JSON for backwards compatibility
             statement.processed_transactions = json.dumps([
                 {
@@ -262,16 +275,16 @@ Estado de cuenta:
                 }
                 for txn_data in validated_transactions
             ])
-            
+
             # Update statement status
             statement.status = "completed"
             statement.extraction_status = "completed"
             statement.categorization_status = "completed"
             statement.is_processed = True
-            
+
             # Commit all changes
             self.db.commit()
-            
+
             result = {
                 "statement_id": str(statement.id),
                 "status": statement.status,
@@ -290,34 +303,34 @@ Estado de cuenta:
                     for txn in created_transactions
                 ]
             }
-            
+
             logger.info(f"Successfully processed statement {statement_id} with NEW approach: {len(created_transactions)} transactions")
             return result
-            
+
         except Exception as e:
             # Rollback and update error status
             self.db.rollback()
-            
+
             statement = self.db.query(Statement).filter(Statement.id == statement_id).first()
             if statement:
                 statement.status = "failed"
                 statement.error_message = str(e)
                 self.db.commit()
-            
+
             logger.error(f"Error processing statement {statement_id} with NEW approach: {str(e)}")
             raise ProcessingError(f"Failed to process statement: {str(e)}")
-    
+
     def get_statement_status(self, statement_id: uuid.UUID) -> Dict[str, Any]:
         """Get current status of statement processing"""
         statement = self.db.query(Statement).filter(Statement.id == statement_id).first()
         if not statement:
             raise ValidationError(f"Statement {statement_id} not found")
-        
+
         # Count linked transactions
         transaction_count = self.db.query(Transaction).filter(
             Transaction.statement_id == statement_id
         ).count()
-        
+
         return {
             "statement_id": str(statement.id),
             "status": statement.status,

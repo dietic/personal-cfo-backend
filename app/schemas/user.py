@@ -34,7 +34,7 @@ class UserPasswordUpdate(BaseModel):
     current_password: str
     new_password: str
     confirm_new_password: str
-    
+
     @validator('confirm_new_password')
     def passwords_match(cls, v, values, **kwargs):
         if 'new_password' in values and v != values['new_password']:
@@ -44,6 +44,7 @@ class UserPasswordUpdate(BaseModel):
 class UserProfile(UserBase):
     id: uuid.UUID
     is_active: bool
+    is_admin: bool
     first_name: Optional[str]
     last_name: Optional[str]
     phone_number: Optional[str]
@@ -52,15 +53,16 @@ class UserProfile(UserBase):
     timezone: TimezoneEnum
     created_at: datetime
     updated_at: Optional[datetime]
-    
+
     class Config:
         from_attributes = True
 
 class User(UserBase):
     id: uuid.UUID
     is_active: bool
+    is_admin: bool
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -84,7 +86,7 @@ class TokenData(BaseModel):
 class AccountDeletionRequest(BaseModel):
     password: str
     confirmation_text: str
-    
+
     @validator('confirmation_text')
     def confirmation_must_match(cls, v):
         if v != "DELETE MY ACCOUNT":

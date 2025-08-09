@@ -15,7 +15,7 @@ NETWORK_PROVIDERS = [
         "is_active": True
     },
     {
-        "name": "Mastercard", 
+        "name": "Mastercard",
         "short_name": "MC",
         "country": "GLOBAL",
         "color_primary": "#EB001B",  # Mastercard red
@@ -24,7 +24,7 @@ NETWORK_PROVIDERS = [
     },
     {
         "name": "American Express",
-        "short_name": "AMEX", 
+        "short_name": "AMEX",
         "country": "GLOBAL",
         "color_primary": "#006FCF",  # Amex blue
         "color_secondary": "#00A6F0", # Amex light blue
@@ -33,7 +33,7 @@ NETWORK_PROVIDERS = [
     {
         "name": "Discover",
         "short_name": "DISC",
-        "country": "GLOBAL", 
+        "country": "GLOBAL",
         "color_primary": "#FF6000",  # Discover orange
         "color_secondary": "#FFA500", # Discover light orange
         "is_active": True
@@ -84,7 +84,7 @@ CARD_TYPES = [
         "is_active": True
     },
     {
-        "name": "Debit Card", 
+        "name": "Debit Card",
         "short_name": "Debit",
         "country": "GLOBAL",
         "description": "Direct access to bank account funds",
@@ -95,7 +95,7 @@ CARD_TYPES = [
     },
     {
         "name": "Charge Card",
-        "short_name": "Charge", 
+        "short_name": "Charge",
         "country": "GLOBAL",
         "description": "Must be paid in full each month, no preset spending limit",
         "typical_interest_rate": "N/A (fees for late payment)",
@@ -106,7 +106,7 @@ CARD_TYPES = [
     {
         "name": "Prepaid Card",
         "short_name": "Prepaid",
-        "country": "GLOBAL", 
+        "country": "GLOBAL",
         "description": "Pre-loaded with funds, no credit check required",
         "typical_interest_rate": "N/A",
         "color_primary": "#F59E0B",  # Orange for prepaid
@@ -125,7 +125,7 @@ CARD_TYPES = [
     },
     {
         "name": "Business Card",
-        "short_name": "Business", 
+        "short_name": "Business",
         "country": "GLOBAL",
         "description": "Designed for business expenses and cash flow management",
         "typical_interest_rate": "15-25% APR",
@@ -133,4 +133,111 @@ CARD_TYPES = [
         "color_secondary": "#F3F4F6", # Light gray
         "is_active": True
     }
+]
+
+# --- Bank providers (Peru) ---
+BANK_PROVIDERS_PE = [
+    {
+        "name": "Banco de Crédito del Perú",
+        "short_name": "BCP",
+        "country": "PE",
+        "country_name": "Peru",
+        "is_popular": True,
+        "website": "https://www.viabcp.com/",
+        "color_primary": "#00529B",
+        "color_secondary": "#FF6F00",
+        "is_active": True,
+    },
+    {
+        "name": "Interbank",
+        "short_name": "Interbank",
+        "country": "PE",
+        "country_name": "Peru",
+        "is_popular": True,
+        "website": "https://interbank.pe/",
+        "color_primary": "#2BB673",
+        "color_secondary": "#1D3F8A",
+        "is_active": True,
+    },
+    {
+        "name": "BBVA Perú",
+        "short_name": "BBVA",
+        "country": "PE",
+        "country_name": "Peru",
+        "is_popular": True,
+        "website": "https://www.bbva.pe/",
+        "color_primary": "#0A2D50",
+        "color_secondary": "#00A1E0",
+        "is_active": True,
+    },
+    {
+        "name": "Scotiabank Perú",
+        "short_name": "Scotiabank",
+        "country": "PE",
+        "country_name": "Peru",
+        "is_popular": True,
+        "website": "https://www.scotiabank.com.pe/",
+        "color_primary": "#EC111A",
+        "color_secondary": "#AA0000",
+        "is_active": True,
+    },
+    {
+        "name": "Diners Club Perú",
+        "short_name": "Diners Club",
+        "country": "PE",
+        "country_name": "Peru",
+        "is_popular": True,
+        "website": "https://www.dinersclub.pe/",
+        "color_primary": "#003A70",
+        "color_secondary": "#6EC1E4",
+        "is_active": True,
+    },
+    {
+        "name": "Banco Pichincha",
+        "short_name": "Pichincha",
+        "country": "PE",
+        "country_name": "Peru",
+        "is_popular": False,
+        "website": "https://www.pichincha.pe/",
+        "color_primary": "#FFC20E",
+        "color_secondary": "#2D2926",
+        "is_active": True,
+    },
+    {
+        "name": "Banco Falabella Perú",
+        "short_name": "Falabella",
+        "country": "PE",
+        "country_name": "Peru",
+        "is_popular": False,
+        "website": "https://www.bancofalabella.pe/",
+        "color_primary": "#78BE20",
+        "color_secondary": "#004B2B",
+        "is_active": True,
+    },
+    {
+        "name": "Banco Ripley",
+        "short_name": "Ripley",
+        "country": "PE",
+        "country_name": "Peru",
+        "is_popular": False,
+        "website": "https://www.bancoripley.com.pe/",
+        "color_primary": "#6E2B77",
+        "color_secondary": "#1A1A1A",
+        "is_active": True,
+    },
+    {
+        "name": "Financiera Oh!",
+        "short_name": "oh!",
+        "country": "PE",
+        "country_name": "Peru",
+        "is_popular": False,
+        "website": "https://www.tarjetaoh.com.pe/",
+        "color_primary": "#E4002B",
+        "color_secondary": "#FF9900",
+        "is_active": True,
+    },
+]
+
+BANK_PROVIDERS = [
+    *BANK_PROVIDERS_PE,
 ]
