@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr, validator
 from typing import Optional
 from datetime import datetime
 import uuid
-from app.models.user import CurrencyEnum, TimezoneEnum
+from app.models.user import CurrencyEnum, TimezoneEnum, UserTypeEnum
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -45,6 +45,7 @@ class UserProfile(UserBase):
     id: uuid.UUID
     is_active: bool
     is_admin: bool
+    plan_tier: UserTypeEnum
     first_name: Optional[str]
     last_name: Optional[str]
     phone_number: Optional[str]
@@ -61,12 +62,16 @@ class User(UserBase):
     id: uuid.UUID
     is_active: bool
     is_admin: bool
+    plan_tier: UserTypeEnum
     created_at: datetime
 
     class Config:
         from_attributes = True
 
 class UserWithProfile(UserProfile):
+    # Explicitly include plan_tier to ensure it's included
+    plan_tier: UserTypeEnum
+    
     # Notification Preferences
     budget_alerts_enabled: bool
     payment_reminders_enabled: bool
@@ -75,6 +80,9 @@ class UserWithProfile(UserProfile):
     monthly_reports_enabled: bool
     email_notifications_enabled: bool
     push_notifications_enabled: bool
+    
+    class Config:
+        from_attributes = True
 
 class Token(BaseModel):
     access_token: str
@@ -99,3 +107,13 @@ class OTPVerifyRequest(BaseModel):
 
 class OTPResendRequest(BaseModel):
     email: EmailStr
+
+class PlanChangeRequest(BaseModel):
+    target_plan: UserTypeEnum
+    
+class PlanChangeResponse(BaseModel):
+    success: bool
+    message: str
+    checkout_url: Optional[str] = None
+    current_plan: UserTypeEnum
+    preference_id: Optional[str] = None

@@ -1,6 +1,6 @@
 """add otp attempts and last sent
 
-Revision ID: 20250809_add_otp_meta
+Revision ID: otp_meta
 Revises: 20250809_add_otp
 Create Date: 2025-08-09
 """
@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = '20250809_add_otp_meta'
+revision = 'otp_meta'
 down_revision = '20250809_add_otp'
 branch_labels = None
 depends_on = None

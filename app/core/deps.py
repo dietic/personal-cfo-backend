@@ -1,9 +1,11 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from typing import Callable
 from app.core.database import get_db
 from app.core.security import verify_token
-from app.models.user import User
+from app.models.user import User, UserTypeEnum
+from app.core.permissions import Permission, has_permission
 
 security = HTTPBearer()
 
@@ -32,6 +34,20 @@ async def get_current_user(
 
     return user
 
+async def get_current_user_optional(
+    request: Request,
+    db: Session = Depends(get_db)
+) -> User | None:
+    """Return current user if Authorization header present and valid; else None."""
+    auth = request.headers.get("Authorization")
+    if not auth or not auth.lower().startswith("bearer "):
+        return None
+    token = auth.split(" ",1)[1]
+    email = verify_token(token)
+    if not email:
+        return None
+    return db.query(User).filter(User.email == email).first()
+
 async def get_current_active_user(
     current_user: User = Depends(get_current_user)
 ) -> User:
@@ -47,9 +63,50 @@ def get_current_admin_user(
     current_user: User = Depends(get_current_active_user)
 ) -> User:
     """Ensure current user is an admin"""
-    if not getattr(current_user, "is_admin", False):
+    if not getattr(current_user, "is_admin", False) and current_user.plan_tier != UserTypeEnum.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required"
         )
     return current_user
+
+def require_permission(permission: Permission) -> Callable:
+    """Dependency factory to require specific permission"""
+    def permission_checker(current_user: User = Depends(get_current_active_user)) -> User:
+        user_type = current_user.plan_tier
+        if current_user.is_admin or user_type == UserTypeEnum.ADMIN:
+            return current_user
+            
+        if not has_permission(user_type, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission required: {permission.value}"
+            )
+        return current_user
+    
+    return permission_checker
+
+def require_user_type(min_user_type: UserTypeEnum) -> Callable:
+    """Dependency factory to require minimum user type"""
+    type_hierarchy = {
+        UserTypeEnum.FREE: 0,
+        UserTypeEnum.PLUS: 1,
+        UserTypeEnum.PRO: 2,
+        UserTypeEnum.ADMIN: 3
+    }
+    
+    def user_type_checker(current_user: User = Depends(get_current_active_user)) -> User:
+        if current_user.is_admin or current_user.plan_tier == UserTypeEnum.ADMIN:
+            return current_user
+            
+        current_level = type_hierarchy.get(current_user.plan_tier, 0)
+        required_level = type_hierarchy.get(min_user_type, 0)
+        
+        if current_level < required_level:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"User type required: {min_user_type.value} or higher"
+            )
+        return current_user
+    
+    return user_type_checker

@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.card import Card
 from app.models.bank_provider import BankProvider
 from app.schemas.card import CardCreate, CardUpdate, Card as CardSchema
+from app.services.plan_limits import assert_within_limit
 
 router = APIRouter()
 
@@ -38,6 +39,9 @@ async def create_card(
     Like registering a new payment method - we need to verify all the
     related entities (bank, network, type) exist before linking them.
     """
+    # Plan limit check
+    assert_within_limit(db, current_user, "cards")
+
     # Validate bank provider exists if provided
     if card_create.bank_provider_id:
         bank_provider = db.query(BankProvider).filter(

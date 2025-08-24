@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import auth, cards, transactions, budgets, recurring_services, statements, analytics, ai, users, categories, keywords, currencies, bank_providers
 from app.api.v1.endpoints import excluded_keywords as user_excluded_keywords
-from app.api.v1.endpoints import admin
+from app.api.v1.endpoints import admin, public, webhooks
 
 api_router = APIRouter()
 
@@ -20,3 +20,10 @@ api_router.include_router(analytics.router, prefix="/analytics", tags=["analytic
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
 api_router.include_router(user_excluded_keywords.router, prefix="/user-settings/excluded-keywords", tags=["user-settings"])
 api_router.include_router(admin.router, tags=["admin"])
+api_router.include_router(public.router)
+api_router.include_router(webhooks.router)
+
+# Registration/waitlist public status (mock) endpoint
+@api_router.get("/public/status")
+async def public_status():
+    return {"registration_disabled": True, "billing_ready": False}

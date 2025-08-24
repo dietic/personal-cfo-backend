@@ -18,7 +18,7 @@ class Statement(Base):
     statement_month = Column(Date)  # Month this statement covers (first day of month)
     card_id = Column(GUID(), ForeignKey("cards.id"), nullable=True)  # Link statement to a card (optional, some legacy statements may not have a direct card)
     status = Column(String, default="uploaded")  # uploaded, extracting, extracted, categorizing, completed, failed, pending
-    task_id = Column(String, nullable=True)  # Celery task ID for background processing
+    task_id = Column(String, nullable=True)  # Background task ID (legacy)
     processing_message = Column(String, nullable=True)  # User-friendly processing status message
     transactions_count = Column(Integer, default=0)  # Number of transactions extracted
     extraction_method = Column(String, nullable=True)  # ai, pattern, manual

@@ -14,7 +14,7 @@ router = APIRouter()
 
 @router.post("/register", response_model=UserProfile)
 async def register(user_create: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user"""
+    """Register a new user (public)."""
     user_service = UserService(db)
 
     # Check if user already exists

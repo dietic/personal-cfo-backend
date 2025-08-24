@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Boolean, Enum as SQLEnum, Integer
+from sqlalchemy import Column, String, DateTime, Boolean, Enum as SQLEnum, Integer, Numeric
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -21,6 +21,12 @@ class TimezoneEnum(enum.Enum):
     UTC_MINUS_3 = "UTC-3 (Argentina Time)"
     UTC_0 = "UTC+0 (London Time)"
     UTC_PLUS_1 = "UTC+1 (Central European Time)"
+
+class UserTypeEnum(enum.Enum):
+    FREE = "free"
+    PLUS = "plus"
+    PRO = "pro"
+    ADMIN = "admin"
 
 class User(Base):
     __tablename__ = "users"
@@ -64,6 +70,16 @@ class User(Base):
     # Delivery Methods
     email_notifications_enabled = Column(Boolean, default=True)
     push_notifications_enabled = Column(Boolean, default=False)
+
+    # Subscription / Billing Fields
+    plan_tier = Column(SQLEnum(UserTypeEnum, name="usertypeenum", values_callable=lambda x: [e.value for e in x]), default=UserTypeEnum.FREE, nullable=False, index=True)
+    plan_status = Column(String, default="inactive", nullable=False)  # inactive|active|past_due|canceled
+    billing_currency = Column(String, default="PEN", nullable=False)  # PEN only for now
+    current_period_end = Column(DateTime(timezone=True), nullable=True)
+    cancel_at_period_end = Column(Boolean, default=False)
+    provider_customer_id = Column(String, nullable=True)  # Mercado Pago payer id
+    provider_subscription_id = Column(String, nullable=True)  # Future recurring sub id
+    last_payment_status = Column(String, nullable=True)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

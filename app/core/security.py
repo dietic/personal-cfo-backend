@@ -7,7 +7,14 @@ from app.core.config import settings
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        if not plain_password or not hashed_password:
+            return False
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception as e:  # Defensive: prevent unexpected hash formats from raising 500
+        # Lightweight stderr message (avoid structured logging complexity here)
+        print(f"[auth] password verify error: {e}")
+        return False
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = "your-resend-api-key"
     EMAIL_FROM: str = "PersonalCFO <noreply@personal-cfo.io>"
 
-    # Redis (for Celery / rate limiting)
+    # Redis (for rate limiting)
     REDIS_URL: str = "redis://localhost:6379"
 
     # File Storage
@@ -39,10 +39,26 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:3002",
         "https://personal-cfo.io",
+        "https://personal-cfo-frontend-kjqe2x9er-personal-cfo.vercel.app",
+        "https://personal-cfo-frontend.vercel.app",
     ]
+    # URL of the frontend used for redirects/back_urls in payment flows
+    # Loaded from env FRONTEND_URL when available, defaults to local nginx/next
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
     # Admin seeding
-    ADMIN_EMAIL: str = "dierios93@gmail.com"
+    ADMIN_EMAIL: str = ""  # Provided via .env
+    ADMIN_BYPASS_TOKEN: str = ""  # Provided via .env; do NOT hardcode secrets in repo
+
+    # Mercado Pago Sandbox (supply via environment)
+    MP_PUBLIC_KEY: str
+    MP_ACCESS_TOKEN: str
+    MP_TEST_BUYER_EMAIL: str | None = None
+    MP_TEST_SELLER_EMAIL: str | None = None
+
+    # Plan pricing in PEN (integer cents) supplied via env
+    PLAN_PLUS_PRICE_PEN: int
+    PLAN_PRO_PRICE_PEN: int
 
     class Config:
         # Use absolute path to .env file

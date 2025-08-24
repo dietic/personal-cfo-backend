@@ -1,7 +1,7 @@
 """add missing tail tables
 
-Revision ID: 20250808_add_missing_tail_tables
-Revises: 20250808_squashed_init
+Revision ID: tail_tables
+Revises: init_base
 Create Date: 2025-08-08 01:10:00
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from app.core.types import GUID
 
 # revision identifiers, used by Alembic.
-revision: str = "20250808_add_missing_tail_tables"
-down_revision: Union[str, None] = "20250808_squashed_init"
+revision: str = "tail_tables"
+down_revision: Union[str, None] = "init_base"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -1,6 +1,6 @@
 """squashed_init baseline
 
-Revision ID: 20250808_squashed_init
+Revision ID: init_base
 Revises:
 Create Date: 2025-08-08 00:00:00
 
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 from app.core.types import GUID
 
 # revision identifiers, used by Alembic.
-revision: str = "20250808_squashed_init"
+revision: str = "init_base"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

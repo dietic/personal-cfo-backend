@@ -36,166 +36,14 @@ from app.schemas.statement import (
     UnlockPDFRequest,
     UnlockPDFResponse
 )
-from app.services.statement_parser import StatementParser
-from app.services.ai_service import AIService
 from app.services.enhanced_statement_service import EnhancedStatementService
-from app.services.simple_statement_service import SimpleStatementService
-from app.services.simplified_statement_service import SimplifiedStatementService
 from app.services.universal_statement_service import UniversalStatementService
 from app.services.pdf_service import PDFService
 from app.services.category_service import CategoryService
+from app.services.plan_limits import assert_within_limit
 from app.core.exceptions import ValidationError, NotFoundError, ProcessingError
 
 router = APIRouter()
-
-# Background processing function
-def process_statement_background(
-    statement_id: str,
-    file_content: bytes,
-    file_name: str,
-    card_id: int,
-    user_id: int,
-    password: Optional[str] = None
-):
-    """Background task to process statement"""
-    from app.services.clean_ai_extractor import CleanAIStatementExtractor  # Use clean extractor
-    from app.models.statement import Statement
-    from app.models.transaction import Transaction
-    from app.models.card import Card
-    import json
-
-    # Create a new database session for the background task
-    session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = session_local()
-
-    logger.info(f"🔄 Starting background processing for statement {statement_id}")
-
-    try:
-        # Get statement from database
-        statement = db.query(Statement).filter(Statement.id == statement_id).first()
-        if not statement:
-            logger.error(f"❌ Statement {statement_id} not found in database")
-            return
-
-        # Update status to processing
-        statement.status = "processing"
-        statement.processing_message = "Extracting transactions..."
-        db.commit()
-
-        # Get card for bank type
-        card = db.query(Card).filter(
-            Card.id == card_id,
-            Card.user_id == user_id
-        ).first()
-
-        if not card:
-            statement.status = "failed"
-            statement.processing_message = "Card not found"
-            db.commit()
-            logger.error(f"❌ Card {card_id} not found")
-            return
-
-        # Save file to the pre-defined path
-        file_path = Path(statement.file_path)
-        file_path.parent.mkdir(exist_ok=True)
-
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-
-        # Initialize AI extractor with database session
-        extractor = CleanAIStatementExtractor(db_session=db)
-
-        # Set bank type for statement
-        bank_name = card.bank_provider.short_name if card.bank_provider and card.bank_provider.short_name else "Unknown"
-        statement.bank_type = bank_name
-        db.commit()
-
-        # Extract transactions using enhanced AI method
-        logger.info(f"🤖 Starting enhanced AI extraction for {bank_name} statement")
-
-        # Use the enhanced direct PDF extraction method (no text fallback)
-        logger.info(f"🤖 About to call extractor.extract_transactions with {len(file_content)} bytes, user_id={str(user_id)}, password={'***' if password else 'None'}")
-        transactions_data = extractor.extract_transactions(
-            file_content,
-            str(user_id),
-            password
-        )
-        logger.info(f"📦 Extractor returned: {type(transactions_data)}, count: {len(transactions_data) if transactions_data else 'None'}")
-
-        if not transactions_data:
-            logger.error(f"❌ No transactions data returned from extractor")
-            statement.status = "failed"
-            statement.processing_message = "No transactions found or extraction failed"
-            db.commit()
-            logger.error(f"❌ No transactions extracted from statement {statement_id}")
-            return
-
-        # Process transactions
-        created_transactions = []
-        for i, transaction_data in enumerate(transactions_data):
-            try:
-                logger.info(f"📝 Creating transaction {i+1}: {transaction_data}")
-
-                # Parse date properly
-                date_str = transaction_data.get("date", "")
-                if date_str:
-                    # Convert "12May" format to proper date
-                    from datetime import datetime
-                    try:
-                        # Try parsing formats like "12May"
-                        parsed_date = datetime.strptime(f"{date_str}2024", "%d%b%Y").date()
-                    except:
-                        # Fallback to today's date if parsing fails
-                        from datetime import date
-                        parsed_date = date.today()
-                        logger.warning(f"⚠️ Could not parse date '{date_str}', using today")
-                else:
-                    from datetime import date
-                    parsed_date = date.today()
-                    logger.warning(f"⚠️ No date provided, using today")
-
-                transaction = Transaction(
-                    transaction_date=parsed_date,
-                    merchant=transaction_data.get("description", "Unknown"),
-                    amount=float(transaction_data.get("amount", 0)),
-                    currency=transaction_data.get("currency", "PEN"),
-                    category=transaction_data.get("category"),
-                    card_id=card_id,
-                    statement_id=statement_id
-                )
-                created_transactions.append(transaction)
-                logger.info(f"✅ Transaction {i+1} created successfully")
-
-            except Exception as e:
-                logger.error(f"❌ Failed to create transaction {i+1}: {str(e)}")
-                logger.error(f"📋 Transaction data was: {transaction_data}")
-                continue
-
-        # Bulk insert transactions
-        db.add_all(created_transactions)
-        db.commit()
-
-        # Update statement with success status
-        statement.status = "completed"
-        statement.processing_message = f"Successfully processed {len(created_transactions)} transactions"
-        statement.transactions_count = len(created_transactions)
-        db.commit()
-
-        logger.info(f"✅ Successfully processed statement {statement_id} - {len(created_transactions)} transactions created")
-
-        # Clean up uploaded file
-        if file_path.exists():
-            file_path.unlink()
-
-    except Exception as e:
-        logger.error(f"❌ Error processing statement {statement_id}: {str(e)}")
-        statement = db.query(Statement).filter(Statement.id == statement_id).first()
-        if statement:
-            statement.status = "failed"
-            statement.processing_message = f"Processing failed: {str(e)}"
-            db.commit()
-    finally:
-        db.close()
 
 
 async def process_statement_background_async(
@@ -306,6 +154,8 @@ async def upload_statement_simple_async(
     db: Session = Depends(get_db)
 ):
     """Upload and process a bank statement with AI extraction in the background"""
+
+    assert_within_limit(db, current_user, "statements")
 
     logger.info(f"🚀 ASYNC UPLOAD REQUEST - File: {file.filename}, Card: {card_id}, User: {current_user.email}")
     logger.info(f"🔐 Password provided: {'Yes' if password else 'No'}")
@@ -514,6 +364,8 @@ async def upload_statement(
     db: Session = Depends(get_db)
 ):
     """Upload a bank statement (PDF only) - Enhanced with category validation"""
+
+    assert_within_limit(db, current_user, "statements")
 
     # Validate user has minimum categories before upload
     try:
@@ -774,6 +626,8 @@ async def upload_statement_simple(
 ):
     """Upload and process a bank statement with AI extraction (supports password-protected PDFs)"""
 
+    assert_within_limit(db, current_user, "statements")
+
     # DEBUG: Log that request was received
     logger.info(f"🚀 UPLOAD REQUEST RECEIVED - File: {file.filename}, Card: {card_id}, User: {current_user.email}")
     logger.info(f"🔐 Password provided: {'Yes' if password else 'No'}")
@@ -896,147 +750,6 @@ async def upload_statement_simple(
             status_code=500,
             detail=f"Statement processing failed: {str(e)}"
         )
-
-@router.post("/upload-background")
-async def upload_statement_background(
-    file: UploadFile = File(...),
-    card_id: str = Form(...),
-    password: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Upload statement for background processing - returns immediately"""
-    import base64
-    from app.tasks.statement_tasks import process_statement_background
-
-    # Validate file type
-    if not file.filename.lower().endswith('.pdf'):
-        raise HTTPException(
-            status_code=400,
-            detail="Only PDF files are supported"
-        )
-
-    try:
-        # Read file content
-        file_content = await file.read()
-
-        # Get card for bank type detection
-        card = db.query(Card).filter(
-            Card.id == card_id,
-            Card.user_id == current_user.id
-        ).first()
-
-        if not card:
-            raise HTTPException(
-                status_code=404,
-                detail="Card not found"
-            )
-
-        # Generate unique ID first
-        statement_id = str(uuid.uuid4())
-
-        # Save file content to uploads directory
-        upload_dir = settings.UPLOAD_DIR
-        os.makedirs(upload_dir, exist_ok=True)
-
-        file_path = os.path.join(upload_dir, f"{statement_id}_{file.filename}")
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-
-        # Create statement record with file_path set
-        statement = Statement(
-            id=statement_id,
-            filename=file.filename,
-            file_path=file_path,
-            file_type="pdf",
-            status="pending",
-            processing_message="Queued for processing...",
-            transactions_count=0,
-            user_id=current_user.id,
-            # Persist selected card on the statement
-            card_id=card.id,
-            created_at=datetime.utcnow()
-        )
-
-        db.add(statement)
-        db.commit()
-
-        # Encode file content for background task
-        file_content_base64 = base64.b64encode(file_content).decode('utf-8')
-
-        # Start background processing
-        task = process_statement_background.delay(
-            statement_id=str(statement.id),
-            file_content_base64=file_content_base64,
-            password=password
-        )
-
-        # Update statement with task ID
-        statement.task_id = task.id
-        db.commit()
-
-        logger.info(f"🚀 Background task started for statement {statement.id} - Task ID: {task.id}")
-
-        return {
-            "id": str(statement.id),
-            "filename": statement.filename,
-            "status": "pending",
-            "task_id": task.id,
-            "message": "Statement queued for processing. You can check the status or continue using the app.",
-            "estimated_time": "2-4 minutes"
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to queue statement: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to queue statement: {str(e)}"
-        )
-
-@router.get("/{statement_id}/status")
-async def get_statement_status(
-    statement_id: str,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Get processing status of a statement"""
-    from app.core.celery_app import celery_app
-
-    # Get statement
-    statement = db.query(Statement).filter(
-        Statement.id == statement_id,
-        Statement.user_id == current_user.id
-    ).first()
-
-    if not statement:
-        raise HTTPException(
-            status_code=404,
-            detail="Statement not found"
-        )
-
-    # Get task status if task_id exists
-    task_info = None
-    if statement.task_id:
-        try:
-            task = celery_app.AsyncResult(statement.task_id)
-            task_info = {
-                "task_id": statement.task_id,
-                "task_status": task.status,
-                "task_info": task.info if task.info else {}
-            }
-        except Exception as e:
-            logger.warning(f"Could not get task status: {str(e)}")
-
-    return {
-        "id": str(statement.id),
-        "filename": statement.filename,
-        "status": statement.status,
-        "processing_message": statement.processing_message,
-        "transactions_count": statement.transactions_count,
-        "task_info": task_info,
-        "created_at": statement.created_at.isoformat(),
-        "updated_at": statement.updated_at.isoformat() if statement.updated_at else None
-    }
 
 @router.post("/process-ai")
 async def process_statement_with_ai(

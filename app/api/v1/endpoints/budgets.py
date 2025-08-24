@@ -14,6 +14,7 @@ from app.models.budget import Budget
 from app.models.transaction import Transaction
 from app.models.card import Card
 from app.schemas.budget import BudgetCreate, BudgetUpdate, Budget as BudgetSchema, BudgetAlert
+from app.services.plan_limits import assert_within_limit
 
 router = APIRouter()
 
@@ -52,6 +53,9 @@ async def create_budget(
     db: Session = Depends(get_db)
 ):
     """Create a new budget"""
+    # Plan limit check
+    assert_within_limit(db, current_user, "budgets")
+
     # Check if budget already exists for this category and month
     existing_budget = db.query(Budget).filter(
         Budget.user_id == current_user.id,

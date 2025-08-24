@@ -9,14 +9,16 @@ from pathlib import Path
 from app.core.database import get_db
 from app.core.deps import get_current_active_user
 from app.core.security import verify_password, get_password_hash
-from app.models.user import User
+from app.models.user import User, UserTypeEnum
 from app.schemas.user import (
     UserProfile, 
     UserWithProfile, 
     UserProfileUpdate, 
     UserNotificationPreferences, 
     UserPasswordUpdate,
-    AccountDeletionRequest
+    AccountDeletionRequest,
+    PlanChangeRequest,
+    PlanChangeResponse
 )
 from app.core.config import settings
 
@@ -187,3 +189,117 @@ async def get_account_stats(
     }
     
     return stats
+
+@router.post("/plan/change", response_model=PlanChangeResponse)
+async def change_plan(
+    plan_request: PlanChangeRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Change user's plan - handle upgrades via MercadoPago and immediate downgrades"""
+    target_plan = plan_request.target_plan
+    current_plan = current_user.plan_tier
+    
+    # Validate plan change
+    if target_plan == current_plan:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Target plan is the same as current plan"
+        )
+    
+    # Admin users cannot change their plan
+    if current_plan == UserTypeEnum.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin users cannot change their plan"
+        )
+    
+    # Cannot upgrade to admin
+    if target_plan == UserTypeEnum.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot upgrade to admin plan"
+        )
+    
+    # Handle downgrades (immediate)
+    if _is_downgrade(current_plan, target_plan):
+        current_user.plan_tier = target_plan
+        db.commit()
+        db.refresh(current_user)
+        
+        return PlanChangeResponse(
+            success=True,
+            message=f"Plan successfully changed to {target_plan.value}",
+            current_plan=target_plan
+        )
+    
+    # Handle upgrades (redirect to payment)
+    if _is_upgrade(current_plan, target_plan):
+        from app.services.mercado_pago_service import create_plan_checkout_intent
+        
+        try:
+            pref = await create_plan_checkout_intent(target_plan.value, str(current_user.id))
+            checkout_url = pref.get("init_point")
+            
+            return PlanChangeResponse(
+                success=True,
+                message=f"Redirecting to payment for {target_plan.value} plan",
+                checkout_url=checkout_url,
+                current_plan=current_plan,
+                preference_id=pref.get("id")  # Store for manual processing
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create checkout: {str(e)}"
+            )
+
+@router.post("/plan/simulate-payment", response_model=dict)
+async def simulate_payment_success(
+    plan_request: PlanChangeRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Development endpoint to simulate successful payment and upgrade user plan"""
+    if not settings.DEBUG:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This endpoint is only available in debug mode"
+        )
+    
+    target_plan = plan_request.target_plan
+    
+    # Simulate successful payment processing
+    current_user.plan_tier = target_plan
+    current_user.plan_status = "active"
+    current_user.last_payment_status = "approved"
+    
+    db.commit()
+    db.refresh(current_user)
+    
+    return {
+        "status": "success",
+        "message": f"User plan upgraded to {target_plan.value}",
+        "user_id": str(current_user.id),
+        "new_plan": target_plan.value
+    }
+
+def _is_downgrade(current: UserTypeEnum, target: UserTypeEnum) -> bool:
+    """Check if plan change is a downgrade"""
+    hierarchy = {
+        UserTypeEnum.FREE: 0,
+        UserTypeEnum.PLUS: 1, 
+        UserTypeEnum.PRO: 2,
+        UserTypeEnum.ADMIN: 3
+    }
+    return hierarchy[target] < hierarchy[current]
+
+def _is_upgrade(current: UserTypeEnum, target: UserTypeEnum) -> bool:
+    """Check if plan change is an upgrade"""
+    hierarchy = {
+        UserTypeEnum.FREE: 0,
+        UserTypeEnum.PLUS: 1,
+        UserTypeEnum.PRO: 2,
+        UserTypeEnum.ADMIN: 3
+    }
+    return hierarchy[target] > hierarchy[current]

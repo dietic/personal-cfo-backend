@@ -24,6 +24,7 @@ class CategoryResponse(CategoryBase):
     id: uuid.UUID
     user_id: uuid.UUID
     is_default: bool
+    can_modify: bool = True  # Will be set based on user permissions
     keywords: List[str] = []  # Will be populated from relationship
     created_at: datetime
     updated_at: Optional[datetime]
