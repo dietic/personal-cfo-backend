@@ -36,11 +36,18 @@ def delete_user(email: str):
         
         # Delete related data in correct order (respecting foreign key constraints)
         
-        # Delete transactions first
-        transactions = session.query(Transaction).filter(Transaction.user_id == user.id).all()
-        for transaction in transactions:
-            session.delete(transaction)
-        print(f"🗑️ Deleted {len(transactions)} transactions")
+        # First get all user's cards
+        cards = session.query(Card).filter(Card.user_id == user.id).all()
+        card_ids = [card.id for card in cards]
+        
+        # Delete transactions (linked through cards)
+        if card_ids:
+            transactions = session.query(Transaction).filter(Transaction.card_id.in_(card_ids)).all()
+            for transaction in transactions:
+                session.delete(transaction)
+            print(f"🗑️ Deleted {len(transactions)} transactions")
+        else:
+            print(f"🗑️ Deleted 0 transactions")
         
         # Delete statements
         statements = session.query(Statement).filter(Statement.user_id == user.id).all()
@@ -49,7 +56,6 @@ def delete_user(email: str):
         print(f"🗑️ Deleted {len(statements)} statements")
         
         # Delete cards
-        cards = session.query(Card).filter(Card.user_id == user.id).all()
         for card in cards:
             session.delete(card)
         print(f"🗑️ Deleted {len(cards)} cards")
