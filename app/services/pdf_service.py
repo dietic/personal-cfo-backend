@@ -53,8 +53,8 @@ class PDFService:
                     eop_search_start = eof_pos + 5
                     eop_pos = file_content.find(b'$EOP$', eop_search_start)
                     if eop_pos > 0 and (eop_pos - eop_search_start) < 50:  # Should be close to %%EOF
-                        pdf_end = eop_pos + 5  # Include the $EOP$ marker
-                        logger.info(f"📍 Found $EOP$ marker at offset {eop_pos}")
+                        # PDF should end at %%EOF, not include the $EOP$ wrapper marker
+                        logger.info(f"📍 Found $EOP$ marker at offset {eop_pos} (excluding from PDF content)")
                 else:
                     # Fallback: look for $EOP$ marker if no %%EOF found
                     eop_pos = file_content.find(b'$EOP$', pdf_start)
