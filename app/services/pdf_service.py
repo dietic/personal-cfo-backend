@@ -42,18 +42,25 @@ class PDFService:
                 # Find the end of the PDF (look for %%EOF or $EOP$)
                 pdf_end = len(file_content)
                 
-                # Look for $EOP$ marker first
-                eop_pos = file_content.find(b'$EOP$', pdf_start)
-                if eop_pos > 0:
-                    pdf_end = eop_pos
-                    logger.info(f"📍 Found $EOP$ marker at offset {eop_pos}")
-                
-                # Also look for %%EOF
-                eof_pos = file_content.rfind(b'%%EOF', pdf_start, pdf_end)
+                # First, look for %%EOF marker (standard PDF end)
+                eof_pos = file_content.rfind(b'%%EOF', pdf_start)
                 if eof_pos > 0:
-                    # Include the %%EOF marker
-                    pdf_end = min(pdf_end, eof_pos + 5)
+                    # Include the %%EOF marker and any trailing whitespace
+                    pdf_end = eof_pos + 5
                     logger.info(f"📍 Found %%EOF at offset {eof_pos}")
+                    
+                    # Look for $EOP$ marker after %%EOF (wrapped file indicator)
+                    eop_search_start = eof_pos + 5
+                    eop_pos = file_content.find(b'$EOP$', eop_search_start)
+                    if eop_pos > 0 and (eop_pos - eop_search_start) < 50:  # Should be close to %%EOF
+                        pdf_end = eop_pos + 5  # Include the $EOP$ marker
+                        logger.info(f"📍 Found $EOP$ marker at offset {eop_pos}")
+                else:
+                    # Fallback: look for $EOP$ marker if no %%EOF found
+                    eop_pos = file_content.find(b'$EOP$', pdf_start)
+                    if eop_pos > 0:
+                        pdf_end = eop_pos
+                        logger.info(f"📍 Found $EOP$ marker at offset {eop_pos} (fallback)")
                 
                 # Carve out the actual PDF content
                 file_content = file_content[pdf_start:pdf_end]
