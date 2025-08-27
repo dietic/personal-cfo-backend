@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_admin_user
 from app.models.user import User
 from app.schemas.user import User as UserSchema
+from app.services.seeding_service import SeedingService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -126,3 +127,25 @@ def signup_stats(
             item["count"] = index[item["day"]]
 
     return {"start": start_dt.date().isoformat(), "end": end_dt.date().isoformat(), "tz": tz, "data": result}
+
+@router.post("/seed/bank-providers")
+def seed_bank_providers(
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin_user),
+):
+    """Seed bank providers (admin only)"""
+    inserted = SeedingService.seed_bank_providers(db)
+    return {"message": f"Seeded {inserted} bank providers", "inserted": inserted}
+
+@router.post("/seed/user-categories")
+def seed_user_categories(
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin_user),
+):
+    """Backfill user categories and keywords (admin only)"""
+    result = SeedingService.backfill_user_categories_and_keywords(db)
+    return {
+        "message": f"Processed user categories and keywords",
+        "users_with_new_categories": result["users_with_new_categories"],
+        "users_with_seeded_keywords": result["users_with_seeded_keywords"]
+    }
