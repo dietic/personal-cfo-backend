@@ -17,18 +17,159 @@ class PDFService:
     """Enhanced service for handling PDF operations with multiple library fallbacks"""
 
     @staticmethod
+    def preprocess_pdf_content(file_content: bytes) -> bytes:
+        """
+        Preprocess PDF content to handle wrapped PDFs and fix corruption.
+        
+        This method handles PDFs that may be wrapped (e.g., with $BOP$/$EOP$ markers)
+        by finding the real PDF content and extracting it properly.
+        """
+        logger.info("\n--- PDF Preprocessing ---")
+        original_length = len(file_content)
+        logger.info(f"Input size: {original_length} bytes")
+        logger.info(f"First 100 bytes (hex): {file_content[:100].hex() if file_content else 'empty'}")
+        logger.info(f"First 50 bytes (raw): {file_content[:50] if file_content else 'empty'}")
+        
+        # Check if this is a wrapped PDF (e.g., $BOP$ wrapper)
+        if file_content.startswith(b'$BOP$'):
+            logger.warning("⚠️ Found $BOP$ wrapper - this is a wrapped PDF")
+            
+            # Find the real PDF header
+            pdf_start = file_content.find(b'%PDF-')
+            if pdf_start > 0:
+                logger.info(f"📍 Found real PDF header at offset {pdf_start}")
+                
+                # Find the end of the PDF (look for %%EOF or $EOP$)
+                pdf_end = len(file_content)
+                
+                # Look for $EOP$ marker first
+                eop_pos = file_content.find(b'$EOP$', pdf_start)
+                if eop_pos > 0:
+                    pdf_end = eop_pos
+                    logger.info(f"📍 Found $EOP$ marker at offset {eop_pos}")
+                
+                # Also look for %%EOF
+                eof_pos = file_content.rfind(b'%%EOF', pdf_start, pdf_end)
+                if eof_pos > 0:
+                    # Include the %%EOF marker
+                    pdf_end = min(pdf_end, eof_pos + 5)
+                    logger.info(f"📍 Found %%EOF at offset {eof_pos}")
+                
+                # Carve out the actual PDF content
+                file_content = file_content[pdf_start:pdf_end]
+                logger.info(f"✂️ Carved PDF: {original_length} bytes -> {len(file_content)} bytes")
+                logger.info(f"Carved PDF first 50 bytes: {file_content[:50] if file_content else 'empty'}")
+                logger.info(f"Carved PDF last 50 bytes: {file_content[-50:] if file_content else 'empty'}")
+            else:
+                logger.error("❌ $BOP$ wrapper found but no %PDF- header detected!")
+        
+        # If not wrapped but PDF header is not at the start, find and extract
+        elif not file_content.startswith(b'%PDF-'):
+            pdf_start = file_content.find(b'%PDF-')
+            if pdf_start > 0 and pdf_start < 1024:  # Look in first 1KB
+                logger.warning(f"⚠️ PDF header found at offset {pdf_start}, not at start")
+                file_content = file_content[pdf_start:]
+                logger.info(f"📍 Extracted from PDF header: {original_length} -> {len(file_content)} bytes")
+            elif pdf_start < 0:
+                logger.warning("❌ No valid PDF header found in file")
+        else:
+            logger.info("✅ PDF starts with valid header")
+        
+        # Now repair the PDF structure if needed
+        if file_content.startswith(b'%PDF-'):
+            file_content = PDFService._repair_pdf_structure(file_content)
+        
+        if len(file_content) != original_length:
+            logger.info(f"✅ PDF preprocessing complete: {original_length} -> {len(file_content)} bytes")
+        else:
+            logger.info("No preprocessing changes needed")
+            
+        logger.info(f"Final first 20 bytes after preprocessing: {file_content[:20] if file_content else 'empty'}")
+        logger.info("--- End Preprocessing ---\n")
+        return file_content
+    
+    @staticmethod
+    def _repair_pdf_structure(pdf_content: bytes) -> bytes:
+        """
+        Attempt to repair PDF structure, particularly xref issues.
+        """
+        try:
+            # First, ensure the PDF ends with %%EOF if it doesn't
+            if not pdf_content.endswith(b'%%EOF'):
+                if b'%%EOF' in pdf_content:
+                    # Find the last %%EOF and truncate there
+                    eof_pos = pdf_content.rfind(b'%%EOF')
+                    pdf_content = pdf_content[:eof_pos + 5]
+                    logger.info("🔧 Truncated PDF at last %%EOF marker")
+                else:
+                    # Add %%EOF if completely missing
+                    pdf_content = pdf_content + b'\n%%EOF'
+                    logger.info("🔧 Added missing %%EOF marker")
+            
+            # Try to repair with pikepdf if available
+            try:
+                import pikepdf
+                from io import BytesIO
+                
+                # Attempt to open and repair
+                with pikepdf.open(BytesIO(pdf_content)) as pdf:
+                    # Save to a new buffer with linearization
+                    output = BytesIO()
+                    pdf.save(output, linearize=True, compress_streams=False)
+                    repaired_content = output.getvalue()
+                    
+                    if len(repaired_content) > 0:
+                        logger.info(f"🔧 Repaired PDF with pikepdf: {len(pdf_content)} -> {len(repaired_content)} bytes")
+                        return repaired_content
+            except Exception as e:
+                logger.debug(f"pikepdf repair attempt failed (non-critical): {e}")
+            
+            # If pikepdf fails, try PyMuPDF repair
+            try:
+                import fitz
+                doc = fitz.open(stream=pdf_content, filetype="pdf")
+                if len(doc) > 0:
+                    # Re-save the document to repair it
+                    repaired_content = doc.tobytes(garbage=4, deflate=True)
+                    doc.close()
+                    if len(repaired_content) > 0:
+                        logger.info(f"🔧 Repaired PDF with PyMuPDF: {len(pdf_content)} -> {len(repaired_content)} bytes")
+                        return repaired_content
+            except Exception as e:
+                logger.debug(f"PyMuPDF repair attempt failed (non-critical): {e}")
+                
+        except Exception as e:
+            logger.warning(f"PDF structure repair failed: {e}")
+        
+        return pdf_content
+
+    @staticmethod
     def is_pdf_encrypted(file_content: bytes) -> bool:
         """
         Check if PDF is encrypted using multiple approaches.
+        Returns True if ANY method detects encryption.
         """
+        logger.info("\n--- PDF Encryption Check ---")
+        logger.info(f"Original content size: {len(file_content)} bytes")
+        
+        # Preprocess content to fix common corruption issues
+        file_content = PDFService.preprocess_pdf_content(file_content)
+        logger.info(f"After preprocessing: {len(file_content)} bytes")
+        
+        # Track results from all methods
+        methods_tried = []
+        
         try:
             # Method 1: Try PyMuPDF first (most robust)
             doc = fitz.open(stream=file_content, filetype="pdf")
             is_encrypted = doc.needs_pass
             doc.close()
-            logger.info(f"PyMuPDF encryption check: {is_encrypted}")
-            return is_encrypted
+            methods_tried.append(f"PyMuPDF: {is_encrypted}")
+            if is_encrypted:
+                logger.info(f"PyMuPDF detected encryption: {is_encrypted}")
+                return True
         except Exception as e:
+            methods_tried.append(f"PyMuPDF: failed ({str(e)})")
             logger.warning(f"PyMuPDF encryption check failed: {str(e)}")
 
         try:
@@ -36,9 +177,12 @@ class PDFService:
             pdf_file = io.BytesIO(file_content)
             pdf_reader = PyPDF2.PdfReader(pdf_file)
             is_encrypted = pdf_reader.is_encrypted
-            logger.info(f"PyPDF2 encryption check: {is_encrypted}")
-            return is_encrypted
+            methods_tried.append(f"PyPDF2: {is_encrypted}")
+            if is_encrypted:
+                logger.info(f"PyPDF2 detected encryption: {is_encrypted}")
+                return True
         except Exception as e:
+            methods_tried.append(f"PyPDF2: failed ({str(e)})")
             logger.warning(f"PyPDF2 encryption check failed: {str(e)}")
 
         try:
@@ -50,9 +194,12 @@ class PDFService:
                     # Look for encryption in metadata
                     for value in pdf.metadata.values():
                         if value and 'encrypt' in str(value).lower():
+                            methods_tried.append("pdfplumber: detected in metadata")
                             logger.info("pdfplumber detected encryption in metadata")
                             return True
+            methods_tried.append("pdfplumber: no encryption detected")
         except Exception as e:
+            methods_tried.append(f"pdfplumber: failed ({str(e)})")
             logger.warning(f"pdfplumber encryption check failed: {str(e)}")
 
         # Method 4: Manual detection as final fallback
@@ -64,17 +211,27 @@ class PDFService:
                 '/Filter/Standard',
                 'endobj\n/Encrypt',
                 '/O <',
-                '/U <'
+                '/U <',
+                '/CF',
+                '/StdCF',
+                '/SecurityHandler',
+                '/R 4',
+                '/R 5',
+                '/R 6'
             ]
 
             for indicator in encryption_indicators:
                 if indicator in content_str:
+                    methods_tried.append(f"Manual: found '{indicator}'")
                     logger.info(f"Manual encryption detection: Found indicator '{indicator}'")
                     return True
+            methods_tried.append("Manual: no indicators found")
         except Exception as e:
+            methods_tried.append(f"Manual: failed ({str(e)})")
             logger.warning(f"Manual encryption detection failed: {str(e)}")
 
-        logger.info("All encryption detection methods exhausted. Assuming not encrypted.")
+        # Log all methods tried for debugging
+        logger.warning(f"No encryption detected by any method. Results: {'; '.join(methods_tried)}")
         return False
 
     @staticmethod
@@ -82,6 +239,26 @@ class PDFService:
         """
         Validate if PDF can be accessed/read without password using multiple PDF libraries
         """
+        logger.info(f"\n{'='*60}")
+        logger.info(f"PDF VALIDATION STARTED")
+        logger.info(f"File size: {len(file_content)} bytes")
+        logger.info(f"First 50 bytes (hex): {file_content[:50].hex() if file_content else 'empty'}")
+        logger.info(f"First 20 bytes (raw): {file_content[:20] if file_content else 'empty'}")
+        
+        # Check if it looks like a PDF
+        if file_content:
+            if file_content.startswith(b'%PDF'):
+                logger.info("✅ File starts with %PDF header")
+            elif b'%PDF' in file_content[:1024]:
+                pos = file_content[:1024].find(b'%PDF')
+                logger.warning(f"⚠️ PDF header found at position {pos}, not at start")
+            else:
+                logger.error("❌ No PDF header found in first 1024 bytes")
+                
+            # Check for common wrappers
+            if file_content.startswith(b'$BOP$'):
+                logger.warning("⚠️ File starts with $BOP$ wrapper")
+        
         result = {
             "encrypted": False,
             "accessible": False,
@@ -91,29 +268,40 @@ class PDFService:
 
         try:
             # Check if encrypted
+            logger.info("Checking if PDF is encrypted...")
             is_encrypted = PDFService.is_pdf_encrypted(file_content)
             result["encrypted"] = is_encrypted
+            logger.info(f"Encryption check result: encrypted={is_encrypted}")
 
             if not is_encrypted:
                 # Test if we can actually read it
+                logger.info("PDF not encrypted, testing readability...")
                 readable = PDFService._test_pdf_readability(file_content)
                 result["accessible"] = readable
                 result["needs_password"] = not readable
+                logger.info(f"Readability test result: readable={readable}")
+                logger.info(f"Final validation result: {result}")
+                logger.info(f"{'='*60}\n")
                 return result
 
             # PDF is encrypted, test if accessible without password
+            logger.info("PDF is encrypted, marking as needs password")
             result["accessible"] = False
             result["needs_password"] = True
 
         except Exception as e:
             result["error"] = f"PDF validation failed: {str(e)}"
-            logger.error(f"PDF validation error: {str(e)}")
+            logger.error(f"PDF validation error: {str(e)}", exc_info=True)
 
+        logger.info(f"Final validation result: {result}")
+        logger.info(f"{'='*60}\n")
         return result
 
     @staticmethod
     def _test_pdf_readability(file_content: bytes) -> bool:
         """Test if PDF can be read using multiple libraries"""
+        # Preprocess content to fix common corruption issues
+        file_content = PDFService.preprocess_pdf_content(file_content)
 
         # Test with PyMuPDF
         try:
@@ -156,11 +344,15 @@ class PDFService:
         Returns (success, unlocked_content, error_message)
         """
         logger.info(f"Attempting to unlock PDF with password length: {len(password)}")
+        
+        # Preprocess content to fix common corruption issues
+        original_content = file_content
+        file_content = PDFService.preprocess_pdf_content(file_content)
 
         # First check if it's actually encrypted
-        if not PDFService.is_pdf_encrypted(file_content):
+        if not PDFService.is_pdf_encrypted(original_content):
             logger.info("PDF is not encrypted, returning original content")
-            return True, file_content, "PDF is not encrypted"
+            return True, original_content, "PDF is not encrypted"
 
         # Method 1: Try PyMuPDF (most robust for problematic PDFs)
         logger.info("Trying PyMuPDF unlock...")

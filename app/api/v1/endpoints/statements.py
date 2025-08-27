@@ -170,9 +170,14 @@ async def upload_statement_simple_async(
     try:
         # Read file content
         file_content = await file.read()
+        
+        logger.info(f"📄 File read complete: {len(file_content)} bytes")
+        logger.info(f"📝 First 50 bytes (hex): {file_content[:50].hex() if file_content else 'empty'}")
+        logger.info(f"📝 First 20 bytes (raw): {file_content[:20] if file_content else 'empty'}")
 
         # Check if PDF is password protected (quick check)
         pdf_status = PDFService.validate_pdf_access(file_content)
+        actual_password = password  # Track the actual password for processing
         if pdf_status["encrypted"] and not pdf_status["accessible"]:
             if password:
                 logger.info("PDF is encrypted, attempting to unlock with provided password")
@@ -183,6 +188,8 @@ async def upload_statement_simple_async(
                         detail=f"Invalid password or PDF cannot be unlocked: {error_message}"
                     )
                 file_content = unlocked_content
+                actual_password = None  # Content is now unlocked, no password needed for processing
+                logger.info(f"PDF successfully unlocked, content size: {len(file_content)} bytes")
             else:
                 raise HTTPException(
                     status_code=423,
@@ -232,7 +239,7 @@ async def upload_statement_simple_async(
                 file_name=file.filename,
                 card_id=card_id,
                 user_id=current_user.id,
-                password=password
+                password=actual_password  # Use actual_password (None if already unlocked)
             )
         )
         # Store task reference to prevent garbage collection
@@ -645,6 +652,7 @@ async def upload_statement_simple(
 
         # Check if PDF is password protected
         pdf_status = PDFService.validate_pdf_access(file_content)
+        actual_password = password  # Track the actual password for processing
         if pdf_status["encrypted"] and not pdf_status["accessible"]:
             # If password provided, try to unlock the PDF
             if password:
@@ -657,6 +665,7 @@ async def upload_statement_simple(
                     )
                 # Use unlocked content for processing
                 file_content = unlocked_content
+                actual_password = None  # Content is now unlocked, no password needed for processing
                 logger.info(f"PDF successfully unlocked, content size: {len(file_content)} bytes")
             else:
                 raise HTTPException(

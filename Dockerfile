@@ -16,11 +16,11 @@ RUN apt-get update \
 WORKDIR /app
 
 # Copy and install deps first (better caching)
-COPY personal-cfo-backend/requirements.txt /app/requirements.txt
+COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy app source
-COPY personal-cfo-backend /app
+COPY . /app
 
 # Remove only obsolete duplicate baseline migrations (keep new ones including billing/waitlist)
 RUN find /app/alembic/versions -type f -name '*merge_heads_for_is_admin.py' -delete || true
@@ -34,7 +34,7 @@ RUN mkdir -p "$UPLOAD_DIR"
 
 EXPOSE 8000
 
-COPY personal-cfo-backend/docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
 # Run Alembic migrations then launch API
