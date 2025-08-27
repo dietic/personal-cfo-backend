@@ -67,7 +67,13 @@ class PDFService:
                 logger.info(f"✂️ Carved PDF: {original_length} bytes -> {len(file_content)} bytes")
                 logger.info(f"Carved PDF first 50 bytes: {file_content[:50] if file_content else 'empty'}")
                 logger.info(f"Carved PDF last 50 bytes: {file_content[-50:] if file_content else 'empty'}")
-                logger.info("📋 Note: Letting PDF libraries handle xref table recovery automatically")
+                
+                # If we removed bytes from the start, we need to adjust the startxref pointer
+                if pdf_start > 0:
+                    logger.info(f"🔧 Adjusting startxref pointer by -{pdf_start} bytes due to prefix removal")
+                    file_content = PDFService._adjust_startxref_pointer(file_content, pdf_start)
+                
+                logger.info("📋 PDF carving and repair completed")
             else:
                 logger.error("❌ $BOP$ wrapper found but no %PDF- header detected!")
         
@@ -97,60 +103,60 @@ class PDFService:
         return file_content
 
     @staticmethod
-    def _fix_xref_offsets(file_content: bytes, bytes_removed: int) -> bytes:
+    def _adjust_startxref_pointer(file_content: bytes, bytes_removed: int) -> bytes:
         """
-        Fix xref table offsets after removing bytes from the beginning of the PDF.
-        This is crucial for PDFs that were wrapped and had their prefixes removed.
+        Adjust only the startxref pointer after removing bytes from the beginning.
+        This is a minimal, safe repair for wrapped PDFs.
         """
-        logger.info(f"🔧 Starting xref offset fix - adjusting by -{bytes_removed} bytes")
-        
         try:
             # Find the startxref location
             startxref_pos = file_content.rfind(b'startxref')
             if startxref_pos == -1:
-                logger.warning("No 'startxref' found - cannot fix offsets")
+                logger.warning("No 'startxref' found - skipping offset adjustment")
                 return file_content
             
-            # Extract the current xref offset
-            after_startxref = file_content[startxref_pos + 10:]  # Skip 'startxref\n'
-            eof_pos = after_startxref.find(b'%%EOF')
+            # Find the next newline after startxref
+            newline_pos = file_content.find(b'\n', startxref_pos + 9)
+            if newline_pos == -1:
+                logger.warning("No newline after startxref - skipping offset adjustment")
+                return file_content
+            
+            # Find %%EOF after the offset
+            eof_pos = file_content.find(b'%%EOF', newline_pos)
             if eof_pos == -1:
-                logger.warning("No '%%EOF' found after startxref - cannot fix offsets")
+                logger.warning("No '%%EOF' found after startxref - skipping offset adjustment")
                 return file_content
             
-            current_offset_bytes = after_startxref[:eof_pos].strip()
+            # Extract current offset
+            offset_bytes = file_content[newline_pos + 1:eof_pos].strip()
             try:
-                current_offset = int(current_offset_bytes)
+                current_offset = int(offset_bytes.decode('ascii'))
                 new_offset = current_offset - bytes_removed
                 
-                logger.info(f"📍 Found startxref at position {startxref_pos}")
-                logger.info(f"📍 Current xref offset: {current_offset}")
-                logger.info(f"📍 New xref offset: {new_offset}")
+                logger.info(f"📍 Current startxref pointer: {current_offset}")
+                logger.info(f"📍 Adjusted startxref pointer: {new_offset}")
                 
                 if new_offset < 0:
-                    logger.error(f"❌ Calculated negative offset {new_offset} - this indicates corruption")
+                    logger.warning(f"⚠️ Calculated negative offset {new_offset} - keeping original")
                     return file_content
                 
-                # Replace the offset in the file
+                # Replace just the offset number
                 new_offset_bytes = str(new_offset).encode('ascii')
+                fixed_content = (
+                    file_content[:newline_pos + 1] + 
+                    new_offset_bytes + 
+                    file_content[eof_pos:]
+                )
                 
-                # Build the new content
-                before_offset = file_content[:startxref_pos + 10]  # Up to and including 'startxref\n'
-                after_offset = b'%%EOF' + file_content[startxref_pos + 10 + eof_pos + 5:]  # From %%EOF onwards
-                
-                fixed_content = before_offset + new_offset_bytes + b'\n' + after_offset
-                
-                logger.info(f"✅ Fixed xref offset: {current_offset} -> {new_offset}")
-                logger.info(f"Fixed content size: {len(file_content)} -> {len(fixed_content)} bytes")
-                
+                logger.info(f"✅ Adjusted startxref: {current_offset} -> {new_offset}")
                 return fixed_content
                 
-            except ValueError as e:
-                logger.error(f"❌ Cannot parse xref offset '{current_offset_bytes}': {e}")
+            except (ValueError, UnicodeDecodeError) as e:
+                logger.warning(f"⚠️ Cannot parse startxref offset: {e}")
                 return file_content
                 
         except Exception as e:
-            logger.error(f"❌ Error fixing xref offsets: {str(e)}")
+            logger.error(f"❌ Error adjusting startxref pointer: {str(e)}")
             return file_content
     
     @staticmethod
