@@ -1,7 +1,7 @@
 """add otp fields to users
 
 Revision ID: 20250809_add_otp
-Revises: card_id_stmt
+Revises: 20250809_add_card_id
 Create Date: 2025-08-09
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '20250809_add_otp'
-down_revision = 'card_id_stmt'
+down_revision = '20250809_add_card_id'
 branch_labels = None
 depends_on = None
 

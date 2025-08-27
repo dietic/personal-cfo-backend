@@ -1,6 +1,6 @@
 """add card_id to statements
 
-Revision ID: card_id_stmt
+Revision ID: 20250809_add_card_id
 Revises: init_base
 Create Date: 2025-08-09 00:00:00.000000
 
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from app.core.types import GUID
 
 # revision identifiers, used by Alembic.
-revision: str = 'card_id_stmt'
+revision: str = '20250809_add_card_id'
 down_revision: Union[str, None] = 'init_base'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

@@ -46,11 +46,11 @@ class Settings(BaseSettings):
     # Loaded from env FRONTEND_URL when available, defaults to local nginx/next
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-    # Admin seeding
-    ADMIN_EMAIL: str = ""  # Provided via .env
-    ADMIN_BYPASS_TOKEN: str = ""  # Provided via .env; do NOT hardcode secrets in repo
+    # Admin seeding (provide via environment; do not hardcode secrets)
+    ADMIN_EMAIL: str = ""
+    ADMIN_BYPASS_TOKEN: str = ""
 
-    # Mercado Pago Sandbox (supply via environment)
+    # Mercado Pago (supply via environment)
     MP_PUBLIC_KEY: str
     MP_ACCESS_TOKEN: str
     MP_TEST_BUYER_EMAIL: str | None = None

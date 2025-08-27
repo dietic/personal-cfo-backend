@@ -77,15 +77,27 @@ class UserService:
         audit("OTP_SENT", email=db_user.email, user_id=str(db_user.id), sent=bool(sent))
 
         # Create default categories and seed keywords for new user
-        from app.services.category_service import CategoryService
-        from app.services.keyword_service import KeywordService
+        try:
+            from app.services.category_service import CategoryService
+            from app.services.keyword_service import KeywordService
 
-        # Create default categories
-        CategoryService.create_default_categories(self.db, db_user.id)
+            # Create default categories
+            print(f"🔧 Creating categories for user {db_user.id} ({db_user.email})")
+            categories = CategoryService.create_default_categories(self.db, db_user.id)
+            print(f"✅ Created {len(categories)} categories for user {db_user.id}")
 
-        # Seed default keywords (15 per category)
-        keyword_service = KeywordService(self.db)
-        keyword_service.seed_default_keywords(str(db_user.id))
+            # Seed default keywords (15 per category)
+            print(f"🔧 Seeding keywords for user {db_user.id}")
+            keyword_service = KeywordService(self.db)
+            keyword_service.seed_default_keywords(str(db_user.id))
+            print(f"✅ Seeded keywords for user {db_user.id}")
+            
+        except Exception as e:
+            print(f"❌ ERROR seeding categories/keywords for user {db_user.id}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Don't fail user creation, just log the error
+            audit("CATEGORY_SEED_ERROR", user_id=str(db_user.id), error=str(e))
 
         return db_user
 
