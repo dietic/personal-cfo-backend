@@ -79,18 +79,11 @@ class UserService:
         # Create default categories and seed keywords for new user
         try:
             from app.services.category_service import CategoryService
-            from app.services.keyword_service import KeywordService
 
-            # Create default categories
-            print(f"🔧 Creating categories for user {db_user.id} ({db_user.email})")
+            # Create default categories (includes keywords)
+            print(f"🔧 Creating categories with keywords for user {db_user.id} ({db_user.email})")
             categories = CategoryService.create_default_categories(self.db, db_user.id)
-            print(f"✅ Created {len(categories)} categories for user {db_user.id}")
-
-            # Seed default keywords (15 per category)
-            print(f"🔧 Seeding keywords for user {db_user.id}")
-            keyword_service = KeywordService(self.db)
-            keyword_service.seed_default_keywords(str(db_user.id))
-            print(f"✅ Seeded keywords for user {db_user.id}")
+            print(f"✅ Created {len(categories)} categories with keywords for user {db_user.id}")
             
         except Exception as e:
             print(f"❌ ERROR seeding categories/keywords for user {db_user.id}: {str(e)}")
