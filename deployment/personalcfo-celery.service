@@ -1,0 +1,36 @@
+[Unit]
+Description=PersonalCFO Celery Worker
+After=network.target redis.service personalcfo.service
+Wants=redis.service
+
+[Service]
+Type=forking
+User=personalcfo
+Group=personalcfo
+WorkingDirectory=/opt/personalcfo
+Environment=PATH=/opt/personalcfo/venv/bin
+ExecStart=/opt/personalcfo/venv/bin/celery -A app.core.celery_app.celery_app worker --loglevel=INFO -Q statements,priority --detach --pidfile=/var/run/personalcfo-celery.pid --logfile=/var/log/personalcfo/celery.log
+ExecStop=/bin/kill -TERM $MAINPID
+ExecReload=/bin/kill -HUP $MAINPID
+PIDFile=/var/run/personalcfo-celery.pid
+KillMode=mixed
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=personalcfo-celery
+
+# Security settings
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/personalcfo/uploads /var/log/personalcfo /var/run
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

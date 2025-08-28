@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 class Settings(BaseSettings):
-    # Database
+    # Database - defaults to local Docker, override with environment variable for production
     DATABASE_URL: str = "postgresql+psycopg2://personalcfo:personalcfo@postgres:5432/personalcfo"
 
     # JWT
@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = "your-resend-api-key"
     EMAIL_FROM: str = "PersonalCFO <noreply@personal-cfo.io>"
 
-    # Redis (for rate limiting)
+    # Redis (for rate limiting) - defaults to local, override for production
     REDIS_URL: str = "redis://localhost:6379"
 
     # File Storage

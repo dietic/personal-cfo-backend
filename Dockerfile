@@ -1,41 +1,27 @@
-# Backend Dockerfile for Personal-CFO
+# Backend Dockerfile for Personal-CFO (FastAPI + Python 3.12)
 
-FROM python:3.12-slim AS base
+FROM python:3.12-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
-# Install system deps for building wheels where needed
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
+# Set working directory
 WORKDIR /app
 
-# Copy and install deps first (better caching)
-COPY personal-cfo-backend/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy app source (only backend folder)
-COPY personal-cfo-backend/ /app
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Remove only obsolete duplicate baseline migrations (keep new ones including billing/waitlist)
-RUN find /app/alembic/versions -type f -name '*merge_heads_for_is_admin.py' -delete || true
+# Copy application code
+COPY . .
 
-# Expose uploads dir and alembic
-ENV UPLOAD_DIR=/app/uploads
-RUN mkdir -p "$UPLOAD_DIR"
+# Create uploads directory
+RUN mkdir -p uploads
 
-# Default: rely on DATABASE_URL from environment
-# Alembic reads settings.DATABASE_URL via env.py
-
+# Expose port
 EXPOSE 8000
 
-COPY personal-cfo-backend/docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
-
-# Run Alembic migrations then launch API
-CMD ["/app/docker-entrypoint.sh"]
+# Start command
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
