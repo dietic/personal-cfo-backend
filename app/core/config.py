@@ -38,7 +38,9 @@ class Settings(BaseSettings):
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:3002",
+        "http://127.0.0.1:3000",
         "https://personal-cfo.io",
+        "https://api.personal-cfo.io",
         "https://personal-cfo-frontend-kjqe2x9er-personal-cfo.vercel.app",
         "https://personal-cfo-frontend.vercel.app",
     ]
