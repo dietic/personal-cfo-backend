@@ -87,14 +87,6 @@ USER_LIMITS: Dict[UserTypeEnum, Dict[str, int]] = {
         "max_monthly_transactions": -1,
         "data_retention_months": -1,
     },
-    UserTypeEnum.ADMIN: {
-        "max_cards": -1,
-        "max_budgets": -1,
-        "max_recurring_services": -1,
-        "max_categories": -1,
-        "max_monthly_transactions": -1,
-        "data_retention_months": -1,
-    }
 }
 
 # Define permissions for each user type
@@ -179,24 +171,37 @@ USER_PERMISSIONS: Dict[UserTypeEnum, List[Permission]] = {
     UserTypeEnum.FREE: _FREE_PERMISSIONS,
     UserTypeEnum.PLUS: _PLUS_PERMISSIONS,
     UserTypeEnum.PRO: _PRO_PERMISSIONS,
-    UserTypeEnum.ADMIN: _ADMIN_PERMISSIONS,
 }
 
-def has_permission(user_type: UserTypeEnum, permission: Permission) -> bool:
+def has_permission(user_type: UserTypeEnum, permission: Permission, is_admin: bool = False) -> bool:
     """Check if a user type has a specific permission."""
+    if is_admin:
+        return permission in _ADMIN_PERMISSIONS
     return permission in USER_PERMISSIONS.get(user_type, [])
 
-def get_user_permissions(user_type: UserTypeEnum) -> List[Permission]:
+def get_user_permissions(user_type: UserTypeEnum, is_admin: bool = False) -> List[Permission]:
     """Get all permissions for a user type."""
+    if is_admin:
+        return _ADMIN_PERMISSIONS
     return USER_PERMISSIONS.get(user_type, [])
 
-def get_user_limits(user_type: UserTypeEnum) -> Dict[str, int]:
+def get_user_limits(user_type: UserTypeEnum, is_admin: bool = False) -> Dict[str, int]:
     """Get limits for a user type."""
+    if is_admin:
+        # Admins have unlimited access
+        return {
+            "max_cards": -1,
+            "max_budgets": -1,
+            "max_recurring_services": -1,
+            "max_categories": -1,
+            "max_monthly_transactions": -1,
+            "data_retention_months": -1,
+        }
     return USER_LIMITS.get(user_type, {})
 
-def check_limit(user_type: UserTypeEnum, limit_name: str, current_count: int) -> bool:
+def check_limit(user_type: UserTypeEnum, limit_name: str, current_count: int, is_admin: bool = False) -> bool:
     """Check if current count is within limits for user type."""
-    limits = get_user_limits(user_type)
+    limits = get_user_limits(user_type, is_admin)
     max_limit = limits.get(limit_name, 0)
     
     # -1 means unlimited

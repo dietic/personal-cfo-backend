@@ -8,7 +8,7 @@ import pytz
 from app.core.database import get_db
 from app.core.deps import get_current_admin_user
 from app.models.user import User
-from app.schemas.user import User as UserSchema
+from app.schemas.user import User as UserSchema, AdminUserUpdate, AdminUserUpdateResponse
 from app.services.seeding_service import SeedingService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -65,6 +65,47 @@ def toggle_user_active(
         db.refresh(target)
 
     return {"id": str(target.id), "is_active": target.is_active}
+
+@router.put("/users/{user_id}", response_model=AdminUserUpdateResponse)
+def update_user(
+    user_id: str,
+    update_data: AdminUserUpdate,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin_user),
+):
+    """Update user role, tier, or active status (admin only)"""
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Prevent admins from modifying their own admin status
+    if target.id == current_admin.id and update_data.is_admin is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admins cannot modify their own admin status"
+        )
+
+    # Prevent admins from deactivating themselves
+    if target.id == current_admin.id and update_data.is_active is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admins cannot deactivate themselves"
+        )
+
+    # Update fields if provided
+    if update_data.is_admin is not None:
+        target.is_admin = update_data.is_admin
+    
+    if update_data.plan_tier is not None:
+        target.plan_tier = update_data.plan_tier
+    
+    if update_data.is_active is not None:
+        target.is_active = update_data.is_active
+
+    db.commit()
+    db.refresh(target)
+
+    return target
 
 @router.get("/stats/signups")
 def signup_stats(

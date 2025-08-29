@@ -44,7 +44,7 @@ def create_test_users():
         },
         {
             "email": "admin@personal-cfo.io",
-            "plan_tier": UserTypeEnum.ADMIN,
+            "plan_tier": UserTypeEnum.FREE,
             "is_admin": True,
             "first_name": "Admin",
             "last_name": "User"
@@ -52,7 +52,7 @@ def create_test_users():
     ]
     
     # Default password for all test users
-    default_password = "testpass123"
+    default_password = "Lima2023$"
     password_hash = get_password_hash(default_password)
     
     for user_data in test_users:
@@ -88,10 +88,10 @@ def create_test_users():
         db.commit()
         print("Test users created/updated successfully!")
         print("\nTest Users:")
-        print("- free@personal-cfo.io (password: testpass123) - Free tier")
-        print("- plus@personal-cfo.io (password: testpass123) - Plus tier") 
-        print("- pro@personal-cfo.io (password: testpass123) - Pro tier")
-        print("- admin@personal-cfo.io (password: testpass123) - Admin tier")
+        print("- free@personal-cfo.io (password: Lima2023$) - Free tier")
+        print("- plus@personal-cfo.io (password: Lima2023$) - Plus tier") 
+        print("- pro@personal-cfo.io (password: Lima2023$) - Pro tier")
+        print("- admin@personal-cfo.io (password: Lima2023$) - Admin tier")
         
     except Exception as e:
         db.rollback()

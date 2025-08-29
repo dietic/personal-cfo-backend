@@ -26,7 +26,6 @@ class UserTypeEnum(enum.Enum):
     FREE = "free"
     PLUS = "plus"
     PRO = "pro"
-    ADMIN = "admin"
 
 class User(Base):
     __tablename__ = "users"

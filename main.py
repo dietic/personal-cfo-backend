@@ -12,6 +12,7 @@ from app.core.database import engine
 from app.models import base
 from app.core.database import SessionLocal
 from app.services.seeding_service import SeedingService
+from app.core.first_admin import create_first_admin
 
 # Load environment variables
 load_dotenv()
@@ -114,6 +115,10 @@ def seed_on_startup():
         added = SeedingService.seed_bank_providers(db)
         stats = SeedingService.backfill_user_categories_and_keywords(db)
         print(f"🪴 Seeding complete: bank_providers +{added}; backfill {stats}")
+        
+        # Create first admin user if none exists
+        create_first_admin(settings.FIRST_ADMIN_EMAIL, settings.FIRST_ADMIN_PASSWORD)
+        
     except Exception as e:
         # Do not block startup if seeding fails; just log
         print(f"⚠️ Seeding error: {e}")

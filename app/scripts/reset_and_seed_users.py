@@ -50,7 +50,7 @@ def create_users() -> List[str]:
         {"email": "plus2@personal-cfo.io", "plan_tier": UserTypeEnum.PLUS, "is_admin": False, "first_name": "Plus", "last_name": "Two"},
         {"email": "pro1@personal-cfo.io",  "plan_tier": UserTypeEnum.PRO,  "is_admin": False, "first_name": "Pro",  "last_name": "One"},
         {"email": "pro2@personal-cfo.io",  "plan_tier": UserTypeEnum.PRO,  "is_admin": False, "first_name": "Pro",  "last_name": "Two"},
-        {"email": "admin@personal-cfo.io","plan_tier": UserTypeEnum.ADMIN,"is_admin": True,  "first_name": "Admin","last_name": "User"},
+        {"email": "admin@personal-cfo.io","plan_tier": UserTypeEnum.FREE,"is_admin": True,  "first_name": "Admin","last_name": "User"},
     ]
 
     default_password = "testpass123"

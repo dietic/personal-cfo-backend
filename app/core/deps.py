@@ -54,8 +54,9 @@ async def get_current_active_user(
     """Get current active user"""
     if not current_user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account has been deactivated",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     return current_user
 
@@ -63,7 +64,7 @@ def get_current_admin_user(
     current_user: User = Depends(get_current_active_user)
 ) -> User:
     """Ensure current user is an admin"""
-    if not getattr(current_user, "is_admin", False) and current_user.plan_tier != UserTypeEnum.ADMIN:
+    if not getattr(current_user, "is_admin", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required"
@@ -74,10 +75,9 @@ def require_permission(permission: Permission) -> Callable:
     """Dependency factory to require specific permission"""
     def permission_checker(current_user: User = Depends(get_current_active_user)) -> User:
         user_type = current_user.plan_tier
-        if current_user.is_admin or user_type == UserTypeEnum.ADMIN:
-            return current_user
-            
-        if not has_permission(user_type, permission):
+        is_admin = getattr(current_user, "is_admin", False)
+        
+        if not has_permission(user_type, permission, is_admin):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission required: {permission.value}"
@@ -92,11 +92,11 @@ def require_user_type(min_user_type: UserTypeEnum) -> Callable:
         UserTypeEnum.FREE: 0,
         UserTypeEnum.PLUS: 1,
         UserTypeEnum.PRO: 2,
-        UserTypeEnum.ADMIN: 3
     }
     
     def user_type_checker(current_user: User = Depends(get_current_active_user)) -> User:
-        if current_user.is_admin or current_user.plan_tier == UserTypeEnum.ADMIN:
+        # Admins bypass all plan tier requirements
+        if getattr(current_user, "is_admin", False):
             return current_user
             
         current_level = type_hierarchy.get(current_user.plan_tier, 0)

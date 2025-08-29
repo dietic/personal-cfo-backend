@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # Admin seeding (provide via environment; do not hardcode secrets)
     ADMIN_EMAIL: str = ""
     ADMIN_BYPASS_TOKEN: str = ""
+    
+    # First admin user creation (auto-created on first startup)
+    FIRST_ADMIN_EMAIL: str = "admin@personal-cfo.io"
+    FIRST_ADMIN_PASSWORD: str = "ChangeMe123!"
 
     # Mercado Pago (supply via environment)
     MP_PUBLIC_KEY: str

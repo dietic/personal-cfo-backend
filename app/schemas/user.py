@@ -117,3 +117,21 @@ class PlanChangeResponse(BaseModel):
     checkout_url: Optional[str] = None
     current_plan: UserTypeEnum
     preference_id: Optional[str] = None
+
+class AdminUserUpdate(BaseModel):
+    is_admin: Optional[bool] = None
+    plan_tier: Optional[UserTypeEnum] = None
+    is_active: Optional[bool] = None
+
+class AdminUserUpdateResponse(BaseModel):
+    id: uuid.UUID
+    email: str
+    is_admin: bool
+    plan_tier: UserTypeEnum
+    is_active: bool
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

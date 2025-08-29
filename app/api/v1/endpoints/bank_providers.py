@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_active_user
 from app.models.bank_provider import BankProvider
 from app.models.user import User
 from app.schemas.bank_provider import BankProvider as BankProviderSchema, BankProviderSimple
@@ -15,7 +15,7 @@ def get_bank_providers(
     country: str = None,  # Filter by country code like "PE"
     popular_only: bool = False,  # Show only popular banks first
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Get list of available bank providers.
@@ -46,7 +46,7 @@ def get_bank_providers(
 def get_bank_provider(
     bank_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Get detailed information about a specific bank provider"""
     bank = db.query(BankProvider).filter(BankProvider.id == bank_id).first()
@@ -62,7 +62,7 @@ def get_bank_provider(
 @router.get("/countries", response_model=List[dict])
 def get_available_countries(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """
     Get list of countries that have bank providers in our database.

@@ -207,19 +207,7 @@ async def change_plan(
             detail="Target plan is the same as current plan"
         )
     
-    # Admin users cannot change their plan
-    if current_plan == UserTypeEnum.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin users cannot change their plan"
-        )
-    
-    # Cannot upgrade to admin
-    if target_plan == UserTypeEnum.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot upgrade to admin plan"
-        )
+    # Admin users can change their plan like any other user (admin is a separate role)
     
     # Handle downgrades (immediate)
     if _is_downgrade(current_plan, target_plan):
@@ -290,7 +278,6 @@ def _is_downgrade(current: UserTypeEnum, target: UserTypeEnum) -> bool:
         UserTypeEnum.FREE: 0,
         UserTypeEnum.PLUS: 1, 
         UserTypeEnum.PRO: 2,
-        UserTypeEnum.ADMIN: 3
     }
     return hierarchy[target] < hierarchy[current]
 
@@ -300,6 +287,5 @@ def _is_upgrade(current: UserTypeEnum, target: UserTypeEnum) -> bool:
         UserTypeEnum.FREE: 0,
         UserTypeEnum.PLUS: 1,
         UserTypeEnum.PRO: 2,
-        UserTypeEnum.ADMIN: 3
     }
     return hierarchy[target] > hierarchy[current]

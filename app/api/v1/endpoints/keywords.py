@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_active_user
 from app.models.user import User
 from app.services.keyword_service import KeywordService
 from app.schemas.keyword_schemas import (
@@ -20,7 +20,7 @@ router = APIRouter()
 
 @router.get("/", response_model=List[KeywordResponse])
 async def get_user_keywords(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Get all keywords for the current user"""
@@ -44,7 +44,7 @@ async def get_user_keywords(
 @router.get("/by-category/{category_id}", response_model=List[KeywordResponse])
 async def get_keywords_by_category(
     category_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Get all keywords for a specific category"""
@@ -68,7 +68,7 @@ async def get_keywords_by_category(
 @router.post("/", response_model=KeywordResponse)
 async def create_keyword(
     keyword_data: KeywordCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Create a new keyword for a category"""
@@ -103,7 +103,7 @@ async def create_keyword(
 async def update_keyword(
     keyword_id: str,
     keyword_data: KeywordUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Update a keyword"""
@@ -143,7 +143,7 @@ async def update_keyword(
 @router.delete("/{keyword_id}")
 async def delete_keyword(
     keyword_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Delete a keyword"""
@@ -162,7 +162,7 @@ async def delete_keyword(
 
 @router.get("/summary", response_model=KeywordSummaryResponse)
 async def get_keywords_summary(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Get a summary of keywords grouped by categories"""
@@ -175,7 +175,7 @@ async def get_keywords_summary(
 @router.post("/categorize")
 async def categorize_transaction(
     request: CategorizationRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Categorize a transaction description using keywords"""
@@ -194,7 +194,7 @@ async def categorize_transaction(
 
 @router.post("/seed-defaults")
 async def seed_default_keywords(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Seed default keywords for the current user"""
@@ -207,7 +207,7 @@ async def seed_default_keywords(
 @router.post("/test-categorization")
 async def test_keyword_categorization(
     descriptions: List[str],
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Test how transaction descriptions would be categorized using keywords"""
@@ -230,7 +230,7 @@ async def test_keyword_categorization(
 
 @router.get("/coverage-stats")
 async def get_keyword_coverage_statistics(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Get statistics about keyword coverage for categories"""
@@ -245,7 +245,7 @@ async def get_keyword_coverage_statistics(
 @router.post("/categorize-transactions")
 async def categorize_transactions_with_keywords(
     transaction_data: List[Dict[str, Any]],
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Categorize a batch of transactions using keywords only (no AI)"""

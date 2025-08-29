@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 import uuid
 
-from app.core.deps import get_db, get_current_user
+from app.core.deps import get_db, get_current_active_user
 from app.models.user import User
 from app.models.category import Category
 from app.schemas.category import (
@@ -25,7 +25,7 @@ router = APIRouter()
 def get_categories(
     include_inactive: bool = Query(False, description="Include inactive categories"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Get all categories for the current user.
     If the user has no categories yet (e.g., migrated/free accounts), create the 5 defaults.
@@ -84,7 +84,7 @@ def get_categories(
 @router.get("/stats", response_model=Dict[str, Any])
 def get_category_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Get category usage statistics"""
     stats = CategoryService.get_category_usage_stats(db=db, user_id=current_user.id)
@@ -94,7 +94,7 @@ def get_category_stats(
 @router.get("/validate-minimum")
 def validate_minimum_categories(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Check if user has minimum required categories for statement upload"""
     is_valid = CategoryService.validate_minimum_categories(db=db, user_id=current_user.id)
@@ -110,7 +110,7 @@ def validate_minimum_categories(
 
 @router.get("/permissions")
 def get_category_permissions(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Get category modification permissions for current user"""
     can_modify = CategoryService.can_modify_categories(current_user)
@@ -128,7 +128,7 @@ def get_category_permissions(
 def create_category(
     category_data: CategoryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Create a new category"""
     # Enforce plan category limits (only for user-owned)
@@ -164,7 +164,7 @@ def update_category(
     category_id: uuid.UUID,
     category_data: CategoryUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Update an existing category"""
     try:
@@ -199,7 +199,7 @@ def update_category(
 def delete_category(
     category_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Delete a category (soft delete if used by transactions)"""
     try:
@@ -223,7 +223,7 @@ def delete_category(
 @router.post("/create-defaults", response_model=List[CategoryResponse])
 def create_default_categories(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Create default categories for the user"""
     existing_count = CategoryService.get_category_count(db=db, user_id=current_user.id)
@@ -262,7 +262,7 @@ def get_categorization_suggestions(
     description: Optional[str] = Query(None),
     amount: Optional[float] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Get categorization suggestions for a merchant"""
     suggestions = CategorizationService.get_categorization_suggestions(
@@ -284,7 +284,7 @@ def test_keyword_matching(
     merchant: str,
     description: Optional[str] = Query(""),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Test keyword matching for a merchant/description"""
     match = CategoryService.categorize_by_keywords(
