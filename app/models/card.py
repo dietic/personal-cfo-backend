@@ -24,3 +24,4 @@ class Card(Base):
     user = relationship("User", back_populates="cards")
     bank_provider = relationship("BankProvider", back_populates="cards")
     transactions = relationship("Transaction", back_populates="card", cascade="all, delete-orphan")
+    incomes = relationship("Income", back_populates="card", cascade="all, delete-orphan")

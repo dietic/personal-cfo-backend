@@ -92,3 +92,4 @@ class User(Base):
     alerts = relationship("Alert", back_populates="user", cascade="all, delete-orphan")
     categories = relationship("Category", back_populates="user", cascade="all, delete-orphan")
     category_keywords = relationship("CategoryKeyword", back_populates="user", cascade="all, delete-orphan")
+    incomes = relationship("Income", back_populates="user", cascade="all, delete-orphan")

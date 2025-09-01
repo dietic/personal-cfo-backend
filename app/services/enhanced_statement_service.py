@@ -124,8 +124,7 @@ class EnhancedStatementService:
                 # Create a new card if none found
                 card = Card(
                     user_id=statement.user_id,
-                    card_name=card_name or f"Card from {statement.filename}",
-                    card_type="credit"  # Default type
+                    card_name=card_name or f"Card from {statement.filename}"
                 )
                 db.add(card)
                 db.commit()

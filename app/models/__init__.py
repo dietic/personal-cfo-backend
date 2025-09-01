@@ -11,6 +11,7 @@ from app.models.category_keyword import CategoryKeyword
 from app.models.alert import Alert
 from app.models.user_excluded_keyword import UserExcludedKeyword
 from app.models.user_keyword_rule import UserKeywordRule
+from app.models.income import Income
 
 __all__ = [
     "User",
@@ -25,4 +26,5 @@ __all__ = [
     "Alert",
     "UserExcludedKeyword",
     "UserKeywordRule",
+    "Income",
 ]

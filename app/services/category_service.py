@@ -8,6 +8,9 @@ from app.models.transaction import Transaction
 from app.schemas.category import CategoryCreate, CategoryUpdate, CategoryKeywordMatch
 from app.core.exceptions import NotFoundError, ValidationError
 
+# Restricted category names that cannot be created by users
+RESTRICTED_CATEGORY_NAMES = {"income", "ingreso"}
+
 
 class CategoryService:
 
@@ -102,15 +105,20 @@ class CategoryService:
         if not CategoryService.can_modify_categories(user):
             raise ValidationError("Free users cannot create custom categories. Upgrade your plan to create custom categories.")
 
+        # Validate category name is not restricted
+        category_name = category_data.name.strip()
+        if category_name.lower() in RESTRICTED_CATEGORY_NAMES:
+            raise ValidationError(f"Category name '{category_name}' is restricted and cannot be used")
+
         # Check if category name already exists for this user
         existing = db.query(Category).filter(
             Category.user_id == user_id,
-            Category.name.ilike(category_data.name.strip()),
+            Category.name.ilike(category_name),
             Category.is_active == True
         ).first()
 
         if existing:
-            raise ValidationError(f"Category '{category_data.name}' already exists")
+            raise ValidationError(f"Category '{category_name}' already exists")
 
         category = Category(
             user_id=user_id,
@@ -146,17 +154,23 @@ class CategoryService:
 
         # Check if new name conflicts with existing categories
         if category_data.name and category_data.name.strip() != category.name:
+            new_category_name = category_data.name.strip()
+            
+            # Validate category name is not restricted
+            if new_category_name.lower() in RESTRICTED_CATEGORY_NAMES:
+                raise ValidationError(f"Category name '{new_category_name}' is restricted and cannot be used")
+
             existing = db.query(Category).filter(
                 Category.user_id == user_id,
-                Category.name.ilike(category_data.name.strip()),
+                Category.name.ilike(new_category_name),
                 Category.is_active == True,
                 Category.id != category_id
             ).first()
 
             if existing:
-                raise ValidationError(f"Category '{category_data.name}' already exists")
+                raise ValidationError(f"Category '{new_category_name}' already exists")
 
-            category.name = category_data.name.strip()
+            category.name = new_category_name
 
         if category_data.color is not None:
             category.color = category_data.color

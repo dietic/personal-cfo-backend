@@ -252,10 +252,7 @@ and provides categorization and validation of transactions.
         # Create a default card if none exists
         default_card = Card(
             user_id=statement.user_id,
-            card_name=f"Default Card - {statement.filename}",
-            card_type="credit",
-            bank_provider="Unknown Bank",
-            network_provider="VISA"
+            card_name=f"Default Card - {statement.filename}"
         )
 
         self.db.add(default_card)
