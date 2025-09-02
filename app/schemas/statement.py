@@ -149,3 +149,4 @@ class UnlockPDFResponse(BaseModel):
     success: bool
     message: str
     statement_id: Optional[uuid.UUID] = None
+    unlocked_content: Optional[bytes] = None

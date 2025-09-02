@@ -23,5 +23,8 @@ RUN mkdir -p uploads
 # Expose port
 EXPOSE 8000
 
+# Copy and make startup script executable
+RUN chmod +x start.sh
+
 # Start command
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["./start.sh"]
