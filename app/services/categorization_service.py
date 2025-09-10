@@ -160,6 +160,21 @@ class CategorizationService:
         try:
             db.commit()
             logger.info(f"Categorization completed: {result.ai_categorized} AI, {result.keyword_categorized} keyword, {result.uncategorized} uncategorized")
+            
+            # Learn from categorized transactions to build merchant registry with categories
+            from app.services.merchant_service import MerchantService
+            for transaction in transactions:
+                try:
+                    MerchantService.learn_from_transaction(
+                        db=db,
+                        user_id=user_id,
+                        raw_merchant=transaction.description or "",  # Original description from statement
+                        standardized_merchant=transaction.merchant,  # AI-standardized merchant name
+                        category=transaction.category  # Now we have the category
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to learn from merchant {transaction.merchant}: {str(e)}")
+                    
         except Exception as e:
             db.rollback()
             logger.error(f"Failed to commit categorization changes: {str(e)}")
@@ -244,61 +259,3 @@ class CategorizationService:
         logger.info(f"Transaction {transaction_id} recategorized to {new_category}")
         return transaction
     
-    @staticmethod
-    def get_categorization_suggestions(
-        db: Session,
-        user_id: uuid.UUID,
-        merchant: str,
-        description: str = "",
-        amount: float = None
-    ) -> List[Dict[str, Any]]:
-        """Get categorization suggestions for a merchant/description"""
-        
-        suggestions = []
-        
-        # Get keyword-based suggestion
-        keyword_match = CategoryService.categorize_by_keywords(
-            db, user_id, merchant, description
-        )
-        
-        if keyword_match:
-            suggestions.append({
-                "category": keyword_match.category_name,
-                "confidence": keyword_match.confidence,
-                "method": "keyword",
-                "matched_keywords": keyword_match.matched_keywords
-            })
-        
-        # Get AI-based suggestion
-        try:
-            user_categories = CategoryService.get_user_categories(db, user_id)
-            category_names = [cat.name for cat in user_categories]
-            
-            if category_names:
-                ai_service = AIService()
-                transaction_data = {
-                    "merchant": merchant,
-                    "amount": amount or 0.0,
-                    "description": description,
-                    "date": ""
-                }
-                
-                ai_result = ai_service.categorize_single_transaction(
-                    transaction_data, category_names
-                )
-                
-                if ai_result:
-                    suggestions.append({
-                        "category": ai_result["category"],
-                        "confidence": ai_result["confidence"],
-                        "method": "ai",
-                        "reasoning": ai_result.get("reasoning", "")
-                    })
-                    
-        except Exception as e:
-            logger.error(f"Failed to get AI suggestion: {str(e)}")
-        
-        # Sort by confidence
-        suggestions.sort(key=lambda x: x["confidence"], reverse=True)
-        
-        return suggestions

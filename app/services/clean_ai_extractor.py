@@ -32,6 +32,8 @@ class CleanAIStatementExtractor:
         logger.info(f"📄 PDF content size: {len(file_content)} bytes")
 
         try:
+            # Store user_id temporarily for the private method
+            self._current_user_id = user_id
             transactions = self._extract_transactions_optimized(file_content, password)
             if not transactions or len(transactions) == 0:
                 logger.warning("Primary text-based extraction returned no transactions, trying Vision fallback...")
@@ -65,7 +67,26 @@ class CleanAIStatementExtractor:
                     logger.error("No text extracted from PDF")
                 return []
 
-            # Create universal prompt for any bank statement
+            # Get user_id from method parameters (extract_transactions passes user_id)
+            # We need to access the user_id from the extract_transactions method
+            # Since this is a private method called by extract_transactions, we'll need to modify the signature
+            # For now, let's assume user_id is available in the instance or we need to modify the method signature
+            
+            # For this fix, let me check if we can access user_id from the instance
+            # If not, we'll need to modify the method signature to accept user_id
+            
+            # Let me check how extract_transactions calls this method
+            user_id = getattr(self, '_current_user_id', None)
+            merchant_info = ""
+            
+            if user_id:
+                try:
+                    from app.services.merchant_service import MerchantService
+                    merchant_info = MerchantService.get_merchants_for_ai_prompt(self.db_session, user_id)
+                except Exception as e:
+                    logger.warning(f"Failed to get merchant info: {str(e)}")
+
+            # Create universal prompt for any bank statement with merchant standardization
             prompt = f"""Extract ALL purchase transactions from this bank statement.
 
 IMPORTANT INSTRUCTIONS:
@@ -74,18 +95,41 @@ IMPORTANT INSTRUCTIONS:
 3. Determine the statement period from the FIRST PAGE header (e.g., "Statement period", "Periodo", "Del ... al ..."). Use this to infer the CORRECT YEAR for each transaction date when the statement lists dates without a year.
 4. For each transaction return these fields:
    - date: full ISO date in format YYYY-MM-DD (include the correct year inferred from the statement period; if the period spans months/years, use the appropriate year for each date)
-   - description: complete merchant/transaction description as printed (preserve names, remove internal codes)
+   - merchant: standardized merchant name (see merchant standardization rules below)
+   - description: complete original merchant/transaction description as printed (preserve names, remove internal codes)
    - amount: numeric amount (positive number, use dot as decimal separator)
    - currency: currency code (PEN, USD, EUR, etc.)
 5. Handle multiple currencies if present.
 6. Return ONLY the JSON array with no additional text.
 
+MERCHANT STANDARDIZATION RULES:
+{merchant_info if merchant_info else "No existing merchants found. Standardize new merchant names using common brand names."}
+
+When standardizing merchant names:
+- Normalize the raw description before matching: trim, collapse spaces, remove diacritics, and strip store/location noise (districts, “PE/PERU”, “LIMA”, “SUC/STORE #”, “TIENDA”, “S.A.”, “SAC”, “E.I.R.L.”, “E-COM”, “ECOM”, “POS”, “APP”, “WEB”, “QR”, card scheme codes).
+- Use brand inference, not exact lists. Prefer widely known consumer brands based on general knowledge of companies operating globally and in Latin America (food delivery, supermarkets, electronics, apparel, streaming, marketplaces, app stores, ride-hailing).
+- Fuzzy/substring match common brand tokens and variants (ignore case/punctuation): e.g., “RAPPI”, “RAPPI*RESTAURANTES”, “RAPPI PRIME” → “Rappi”; “UBER TRIP/UBER*EATS” → “Uber” or “Uber Eats”; “GOOGLE*”/“Google Play” → “Google Play”; “APPLE.COM/BILL/ITUNES” → “Apple”; “AMAZON*”/“AMZN” → “Amazon”; “MERCADOPAGO/MERCADO PAGO” → infer underlying merchant if present, else “Mercado Pago”.
+- If the string contains a domain or host, map it to the brand: take the registrable domain (before the TLD) and title-case it (e.g., “STEAMGAMES.COM”, “OPENAI.COM”, “SPOTIFY.COM”, “SHEIN.COM”, “ALiexpress.com”, “NETFLIX.COM” → “Steam”, “OpenAI”, “Spotify”, “Shein”, “Netflix”).
+- For payments via gateways/aggregators (e.g., “NIUBIZ”, “IZIPAY”, “CULQI”, “STRIPE”, “PAYU”, “DLOCAL”, “MERCADO PAGO”):
+  1) Look left/right for a recognizable merchant token in the same line; if found, use that merchant.
+  2) If none is present, return the aggregator name itself (e.g., “Niubiz”) only as a fallback.
+- **Collapse “brand + descriptor” to the brand only:** If a recognized brand token appears and is immediately followed by a generic descriptor, drop everything after the brand. Examples:
+  - “APPARKA CLINICA”, “APPARKA GUARDIA CIVIL”, “APPARKA SEDE XYZ” → “Apparka”
+  - “RAPPI RESTAURANTES”, “COOLBOX TIENDA 123”, “SMARTFIT LOS OLIVOS” → “Rappi”, “Coolbox”, “Smartfit”
+  - This rule applies unless the suffix forms a distinct, widely known sub-brand (keep “Uber Eats”, “Google Play”).
+- Descriptor stop-list (strip when following a brand token; ignore accents/case): clinica, restaurante(s), farmacia(s), guardia civil, comisaria, sede, sucursal, agencia, tienda, local, sede central, oficina, mall, centro comercial, larcomar, miraflores, san isidro, san borja, surco, los olivos, independencia, callao, arequipa, trujillo, chiclayo, cusco, piura, loja, lima, peru, pe, s.a., sac, eirl, sa, suc, store, store numbers.
+- Handle local brand noise and branches: remove neighborhood/district names and store numbers; keep just the brand (e.g., “COOLBOX MIRAFLORES” → “Coolbox”; “SAGA FALABELLA LARCOMAR” → “Saga Falabella”).
+- Prefer the more specific sub-brand when unambiguous (e.g., “Uber Eats” over “Uber” if “EATS” appears; “Google Play” over “Google” if “GOOGLE*” + app/billing pattern).
+- Use proper capitalization (e.g., “Makro” not “MAKRO”).
+- Only return “Unknown” when no recognizable brand token, domain, or aggregator-adjacent merchant can be inferred with high confidence — do not return “Unknown” for well-known brands.
+
 EXPECTED OUTPUT FORMAT - JSON array:
 [
   {{
     "date": "2025-05-12",
-    "description": "STARBUCKS LIMA CENTER",
-    "amount": 25.50,
+    "merchant": "Makro",
+    "description": "MAKRO INDEPENDENCIA LIMA PE",
+    "amount": 195.50,
     "currency": "PEN"
   }}
 ]
@@ -162,11 +206,11 @@ Extract ALL purchase transactions. Return ONLY the JSON array with no additional
 
                 # Transform to expected field names
                 transformed_txn = {
-                    'merchant': txn.get('description', 'Unknown'),  # description -> merchant
+                    'merchant': txn.get('merchant', 'Unknown'),  # Use AI-extracted merchant
                     'amount': float(txn.get('amount', 0)),
                     'currency': txn.get('currency', 'PEN'),
                     'transaction_date': parsed_date,  # parsed date object
-                    'description': txn.get('description', 'Unknown'),  # keep original description
+                    'description': txn.get('description', txn.get('merchant', 'Unknown')),  # fallback to merchant if no description
                     'category': txn.get('category', None)  # category if provided
                 }
                 transformed_transactions.append(transformed_txn)
@@ -224,7 +268,19 @@ Extract ALL purchase transactions. Return ONLY the JSON array with no additional
             content_parts.append({"type": "text", "text": (
                 "Extract ALL purchase transactions from these bank statement images.\n"
                 "Return ONLY a JSON array of objects with: date (YYYY-MM-DD, infer year from context), \n"
-                "description (merchant), amount (number, dot decimal), currency (code). Exclude fees/interests/transfers."
+                "merchant (standardized name), description (original text), amount (number, dot decimal), currency (code). Exclude fees/interests/transfers.\n\n"
+                "MERCHANT STANDARDIZATION RULES:\n"
+                "- Remove location details, store numbers, and unnecessary text like \"Clinica\", \"Restaurantes\", \"Guardia Civil\"\n"
+                "- Use proper capitalization (e.g., \"Makro\" not \"MAKRO\")\n"
+                "- Common brand mappings (including Peruvian brands): Makro, Metro, Wong, Ripley, Falabella, Tottus, Plaza Vea, Vivanda, Coolbox, Smartfit, Saga Falabella, Oeschle, Paris, Hiraoka, La Curacao\n"
+                "- Specific examples:\n"
+                "  - \"Apparka Clinica\" → \"Apparka\"\n"
+                "  - \"Pedidosya Restaurantes\" → \"Pedidosya\"\n"  
+                "  - \"Apparka Guardia Civil\" → \"Apparka\"\n"
+                "  - \"COOLBOX MIRAFLORES\" → \"Coolbox\"\n"
+                "  - \"SMARTFIT LOS OLIVOS\" → \"Smartfit\"\n"
+                "- For well-known brands, even if not in the examples above, try to recognize and standardize them\n"
+                "- Only return \"Unknown\" for truly unrecognizable merchant names, not for well-known brands"
             )})
             for img in images:
                 content_parts.append({
@@ -280,11 +336,11 @@ Extract ALL purchase transactions. Return ONLY the JSON array with no additional
                     parsed_date = date.today()
 
                 transformed.append({
-                    'merchant': txn.get('description', 'Unknown'),
+                    'merchant': txn.get('merchant', 'Unknown'),  # Use AI-extracted merchant
                     'amount': float(txn.get('amount', 0) or 0),
                     'currency': txn.get('currency', 'PEN'),
                     'transaction_date': parsed_date,
-                    'description': txn.get('description', 'Unknown'),
+                    'description': txn.get('description', txn.get('merchant', 'Unknown')),  # fallback to merchant if no description
                     'category': txn.get('category')
                 })
 

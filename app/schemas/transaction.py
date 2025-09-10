@@ -11,7 +11,7 @@ class TransactionBase(BaseModel):
     category: Optional[str] = None
     transaction_date: date
     tags: Optional[List[str]] = None
-    description: Optional[str] = None
+    description: str
 
 class TransactionCreate(TransactionBase):
     card_id: uuid.UUID
@@ -22,7 +22,7 @@ class TransactionUpdate(BaseModel):
     category: Optional[str] = None
     transaction_date: Optional[date] = None
     tags: Optional[List[str]] = None
-    description: Optional[str] = None
+    description: str = ""
 
 class Transaction(TransactionBase):
     id: uuid.UUID

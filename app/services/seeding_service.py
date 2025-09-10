@@ -68,21 +68,19 @@ class SeedingService:
 
         # Default categories + keywords (Spanish) aligned with CategoryService
         default_categories = [
-            {"name": "Alimentación", "color": "#FF6B6B", "keywords": ["restaurante", "comida", "almuerzo", "desayuno", "cena", "café", "cafetería", "pizza", "hamburguesa", "supermercado", "mercado", "panadería", "carnicería", "delivery", "pedido"]},
-            {"name": "Transporte", "color": "#4ECDC4", "keywords": ["gasolina", "combustible", "uber", "taxi", "bus", "metro", "tren", "estacionamiento", "peaje", "auto", "coche", "vehículo", "transporte", "bicicleta", "motocicleta"]},
-            {"name": "Compras", "color": "#45B7D1", "keywords": ["tienda", "centro comercial", "compra", "retail", "ropa", "vestimenta", "amazon", "mercadolibre", "shopping", "boutique", "outlet", "farmacia", "droguería", "librería", "juguetería"]},
-            {"name": "Entretenimiento", "color": "#96CEB4", "keywords": ["cine", "película", "teatro", "concierto", "juego", "spotify", "netflix", "entretenimiento", "diversión", "ocio", "youtube", "streaming", "música", "deporte", "gimnasio"]},
-            {"name": "Servicios Públicos", "color": "#FFEAA7", "keywords": ["electricidad", "luz", "agua", "gas", "internet", "teléfono", "móvil", "celular", "servicio", "factura", "cable", "wifi", "calefacción", "basura", "alcantarillado"]},
-            {"name": "Salud", "color": "#DDA0DD", "keywords": ["doctor", "médico", "hospital", "clínica", "farmacia", "medicina", "dentista", "consulta", "receta", "seguro médico", "copago", "urgencias", "cirugía", "terapia", "laboratorio"]},
-            {"name": "Vivienda", "color": "#F39C12", "keywords": ["alquiler", "arriendo", "hipoteca", "casa", "apartamento", "propiedad", "mantenimiento", "reparación", "seguro hogar", "administración", "inquilino", "propietario", "inmobiliaria", "mudanza", "muebles"]},
+            {"name": "Alimentación", "color": "#FF6B6B", "emoji": "🍕", "keywords": ["restaurante", "comida", "almuerzo", "desayuno", "cena", "café", "cafetería", "pizza", "hamburguesa", "supermercado", "mercado", "panadería", "carnicería", "delivery", "pedido"]},
+            {"name": "Salud", "color": "#4ECDC4", "emoji": "🏥", "keywords": ["doctor", "médico", "hospital", "clínica", "farmacia", "medicina", "dentista", "consulta", "receta", "seguro médico", "copago", "urgencias", "cirugía", "terapia", "laboratorio"]},
+            {"name": "Entretenimiento", "color": "#45B7D1", "emoji": "🎬", "keywords": ["cine", "película", "teatro", "concierto", "juego", "spotify", "netflix", "entretenimiento", "diversión", "ocio", "youtube", "streaming", "música", "deporte", "gimnasio"]},
+            {"name": "Compras", "color": "#96CEB4", "emoji": "🛍️", "keywords": ["tienda", "centro comercial", "compra", "retail", "ropa", "vestimenta", "amazon", "mercadolibre", "shopping", "boutique", "outlet", "farmacia", "droguería", "librería", "juguetería"]},
+            {"name": "Otros", "color": "#FFEAA7", "emoji": "📦", "keywords": ["transporte", "gasolina", "combustible", "uber", "taxi", "bus", "servicios", "electricidad", "luz", "agua", "gas", "internet", "teléfono", "vivienda", "alquiler"]},
         ]
 
         insert_category_sql = text(
             """
             INSERT INTO categories (
-                id, user_id, name, color, is_default, is_system, is_active
+                id, user_id, name, color, emoji, is_default, is_system, is_active
             ) VALUES (
-                :id, :user_id, :name, :color, true, false, true
+                :id, :user_id, :name, :color, :emoji, true, false, true
             )
             ON CONFLICT DO NOTHING
             """
@@ -117,6 +115,7 @@ class SeedingService:
                         "user_id": str(user.id),
                         "name": cat["name"],
                         "color": cat["color"],
+                        "emoji": cat["emoji"],
                     })
                     for kw in cat["keywords"]:
                         keywords_payload.append({

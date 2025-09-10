@@ -13,6 +13,10 @@ class SpendingTrend(BaseModel):
     month: str
     amount: Decimal
 
+class MonthlyCategoryBreakdown(BaseModel):
+    month: str
+    categories: Dict[str, Dict[str, str]]  # category_name -> {currency -> amount}
+
 class YearComparison(BaseModel):
     current_year: int
     previous_year: int
@@ -20,15 +24,8 @@ class YearComparison(BaseModel):
     previous_amount: Decimal
     percentage_change: float
 
-class AIInsight(BaseModel):
-    type: str  # "overspending", "suggestion", "anomaly"
-    title: str
-    description: str
-    category: str
-    confidence: float
 
 class AnalyticsResponse(BaseModel):
     category_spending: List[CategorySpending]
     trends: List[SpendingTrend]
     year_comparison: YearComparison
-    insights: List[AIInsight]

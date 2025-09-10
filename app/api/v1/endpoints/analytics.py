@@ -12,7 +12,7 @@ from app.core.deps import get_current_active_user
 from app.models.user import User
 from app.models.transaction import Transaction
 from app.models.card import Card
-from app.schemas.analytics import CategorySpending, SpendingTrend, YearComparison, AIInsight, AnalyticsResponse
+from app.schemas.analytics import CategorySpending, SpendingTrend, MonthlyCategoryBreakdown, YearComparison, AnalyticsResponse
 from app.services.ai_service import AIService
 
 router = APIRouter()
@@ -37,48 +37,8 @@ class TtlCache:
 _category_cache = TtlCache(15)
 _trends_cache = TtlCache(15)
 _comparison_cache = TtlCache(15)
-_insights_cache = TtlCache(15)
 _dashboard_cache = TtlCache(15)
 
-# Background warmer for insights cache (non-blocking)
-def _warm_insights_cache_blocking(user_id):
-    try:
-        db = SessionLocal()
-        # Get recent transactions
-        transactions = db.query(Transaction).join(Card).filter(
-            Card.user_id == user_id
-        ).order_by(Transaction.transaction_date.desc()).limit(100).all()
-        transactions_data = [
-            {
-                "merchant": tx.merchant,
-                "amount": float(tx.amount),
-                "category": tx.category,
-                "date": tx.transaction_date.isoformat(),
-                "description": tx.description
-            }
-            for tx in transactions
-        ]
-        ai_service = AIService()
-        insights_result = ai_service.analyze_spending_patterns(transactions_data)
-        insights: List[AIInsight] = []
-        if "insights" in insights_result:
-            for insight_data in insights_result["insights"]:
-                insights.append(AIInsight(
-                    type=insight_data.get("type", "suggestion"),
-                    title=insight_data.get("title", "Insight"),
-                    description=insight_data.get("description", ""),
-                    category=insight_data.get("category", "general"),
-                    confidence=insight_data.get("confidence", 0.5)
-                ))
-        _insights_cache.set((user_id,), insights)
-    except Exception:
-        # Silently fail; insights will be empty until next request warms again
-        pass
-    finally:
-        try:
-            db.close()
-        except Exception:
-            pass
 
 def _get_category_spending_internal(
     db: Session,
@@ -169,6 +129,82 @@ async def get_spending_trends(
     _trends_cache.set(cache_key, payload)
     return payload
 
+@router.get("/monthly-categories", response_model=List[MonthlyCategoryBreakdown])
+async def get_monthly_category_breakdown(
+    months: int = Query(12, ge=1, le=24),
+    month: Optional[str] = Query(None, description="Specific month in YYYY-MM format"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get monthly spending breakdown by category"""
+    cache_key = (current_user.id, months, month, "monthly_categories")
+    cached = _trends_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if month:
+        # Parse specific month
+        try:
+            month_date = datetime.strptime(month, "%Y-%m").date()
+            start_date = month_date.replace(day=1)
+            end_date = (month_date.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid month format. Use YYYY-MM.")
+    else:
+        # Default behavior - last N months
+        start_date = (date.today().replace(day=1) - timedelta(days=months * 31)).replace(day=1)
+        end_date = date.today()
+    
+    month_expr = func.to_char(func.date_trunc('month', Transaction.transaction_date), 'YYYY-MM')
+    
+    # Build filter conditions
+    filters = [
+        Card.user_id == current_user.id,
+        Transaction.category.isnot(None)
+    ]
+    
+    if month:
+        # Filter for specific month
+        filters.append(Transaction.transaction_date >= start_date)
+        filters.append(Transaction.transaction_date <= end_date)
+    else:
+        # Filter for date range
+        filters.append(Transaction.transaction_date >= start_date)
+    
+    results = db.query(
+        month_expr.label('month'),
+        Transaction.category,
+        Transaction.currency,
+        func.sum(Transaction.amount).label('total_amount')
+    ).join(Card).filter(*filters).group_by(
+        month_expr, Transaction.category, Transaction.currency
+    ).order_by('month').all()
+
+    # Group by month and category, preserving currency information
+    monthly_data = {}
+    for result in results:
+        if result.month not in monthly_data:
+            monthly_data[result.month] = {}
+        
+        # Store amount with currency information
+        category_key = result.category
+        if category_key not in monthly_data[result.month]:
+            monthly_data[result.month][category_key] = {}
+        
+        monthly_data[result.month][category_key][result.currency or "PEN"] = str(
+            result.total_amount or Decimal('0')
+        )
+
+    payload = [
+        MonthlyCategoryBreakdown(
+            month=month,
+            categories=categories
+        )
+        for month, categories in monthly_data.items()
+    ]
+    _trends_cache.set(cache_key, payload)
+    return payload
+
 @router.get("/comparison", response_model=YearComparison)
 async def get_year_comparison(
     current_user: User = Depends(get_current_active_user),
@@ -216,48 +252,6 @@ async def get_year_comparison(
     _comparison_cache.set(cache_key, result)
     return result
 
-@router.get("/insights", response_model=List[AIInsight])
-async def get_ai_insights(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Get AI-powered spending insights"""
-    cache_key = (current_user.id,)
-    cached = _insights_cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    # Compute synchronously first time when called directly
-    transactions = db.query(Transaction).join(Card).filter(
-        Card.user_id == current_user.id
-    ).order_by(Transaction.transaction_date.desc()).limit(100).all()
-
-    transactions_data = [
-        {
-            "merchant": tx.merchant,
-            "amount": float(tx.amount),
-            "category": tx.category,
-            "date": tx.transaction_date.isoformat(),
-            "description": tx.description
-        }
-        for tx in transactions
-    ]
-
-    ai_service = AIService()
-    insights_result = ai_service.analyze_spending_patterns(transactions_data)
-
-    insights: List[AIInsight] = []
-    if "insights" in insights_result:
-        for insight_data in insights_result["insights"]:
-            insights.append(AIInsight(
-                type=insight_data.get("type", "suggestion"),
-                title=insight_data.get("title", "Insight"),
-                description=insight_data.get("description", ""),
-                category=insight_data.get("category", "general"),
-                confidence=insight_data.get("confidence", 0.5)
-            ))
-    _insights_cache.set(cache_key, insights)
-    return insights
 
 @router.get("/", response_model=AnalyticsResponse)
 async def get_analytics_dashboard(
@@ -290,14 +284,7 @@ async def get_analytics_dashboard(
         db=db
     )
 
-    # Serve insights from cache if present; otherwise return quickly and warm in background
-    insights_cached = _insights_cache.get((current_user.id,))
-    if insights_cached is None:
-        # Fire-and-forget warm-up
-        threading.Thread(target=_warm_insights_cache_blocking, args=(current_user.id,), daemon=True).start()
-        insights = []
-    else:
-        insights = insights_cached
+    insights = []
 
     payload = AnalyticsResponse(
         category_spending=category_spending,

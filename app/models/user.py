@@ -79,6 +79,11 @@ class User(Base):
     provider_customer_id = Column(String, nullable=True)  # Mercado Pago payer id
     provider_subscription_id = Column(String, nullable=True)  # Future recurring sub id
     last_payment_status = Column(String, nullable=True)
+    
+    # AI Usage Tracking
+    ai_keyword_usage_count = Column(Integer, default=0, nullable=False)  # Monthly usage counter
+    ai_keyword_last_used = Column(DateTime(timezone=True), nullable=True)  # Last time AI was used
+    ai_keyword_reset_at = Column(DateTime(timezone=True), nullable=True)  # When counter was last reset
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -93,3 +98,4 @@ class User(Base):
     categories = relationship("Category", back_populates="user", cascade="all, delete-orphan")
     category_keywords = relationship("CategoryKeyword", back_populates="user", cascade="all, delete-orphan")
     incomes = relationship("Income", back_populates="user", cascade="all, delete-orphan")
+    merchants = relationship("Merchant", back_populates="user", cascade="all, delete-orphan")

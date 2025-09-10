@@ -99,16 +99,11 @@ class AIService:
         2. **TREND ANALYSIS**: Compare current month vs historical patterns
         3. **ALERTS**: Identify unusual or concerning transactions/patterns
         4. **CATEGORY INSIGHTS**: Deep dive into spending by category
-        5. **RECOMMENDATIONS**: Actionable advice for better financial management
-        6. **ALERTS FOR FUTURE**: Set up monitoring for specific patterns
 
         Focus on:
         - Unusual spending increases/decreases
         - New merchants or categories
         - Large transactions that deviate from patterns
-        - Budget recommendations based on spending trends
-        - Savings opportunities
-        - Risk factors (overspending, new debt patterns)
 
         Respond with this JSON structure:
         {{
@@ -142,8 +137,7 @@ class AIService:
                     "severity": "high/medium/low",
                     "title": "Alert title",
                     "description": "Detailed alert description",
-                    "transaction_details": "specific transaction if applicable",
-                    "recommendation": "what user should do"
+                    "transaction_details": "specific transaction if applicable"
                 }}
             ],
             "category_insights": [
@@ -152,27 +146,7 @@ class AIService:
                     "amount": "total_spent",
                     "percentage_of_total": "percentage",
                     "trend": "increasing/decreasing/stable",
-                    "insight": "detailed analysis",
-                    "recommendation": "specific advice"
-                }}
-            ],
-            "recommendations": [
-                {{
-                    "type": "budget/savings/debt/investment",
-                    "priority": "high/medium/low",
-                    "title": "Recommendation title",
-                    "description": "Detailed recommendation",
-                    "potential_impact": "expected financial impact",
-                    "action_steps": ["step1", "step2", "step3"]
-                }}
-            ],
-            "future_monitoring": [
-                {{
-                    "alert_type": "spending_limit/merchant_watch/category_budget",
-                    "criteria": "specific criteria to monitor",
-                    "threshold": "specific threshold value",
-                    "frequency": "weekly/monthly",
-                    "description": "what to watch for"
+                    "insight": "detailed analysis"
                 }}
             ]
         }}
@@ -200,61 +174,16 @@ class AIService:
                 "summary": {"total_spending": total_spending, "error": "JSON parsing failed"},
                 "trends": {"spending_change": {"analysis": "Unable to analyze trends"}},
                 "alerts": [{"type": "system_error", "severity": "low", "title": "Analysis Error", "description": f"Could not fully analyze statement: {str(e)}"}],
-                "category_insights": [],
-                "recommendations": [{"type": "system", "priority": "low", "title": "Manual Review", "description": "Please review this statement manually due to analysis error"}],
-                "future_monitoring": []
+                "category_insights": []
             }
         except Exception as e:
             return {
                 "summary": {"total_spending": total_spending, "error": str(e)},
                 "trends": {"spending_change": {"analysis": "Analysis failed"}},
                 "alerts": [{"type": "system_error", "severity": "high", "title": "Analysis Failed", "description": f"Statement analysis error: {str(e)}"}],
-                "category_insights": [],
-                "recommendations": [],
-                "future_monitoring": []
+                "category_insights": []
             }
 
-    def analyze_spending_patterns(self, transactions_data: list) -> Dict[str, Any]:
-        """Analyze spending patterns and provide insights"""
-        prompt = f"""
-        Analyze these spending patterns and provide insights:
-        
-        Transaction data: {json.dumps(transactions_data[:50])}  # Limit data size
-        
-        Provide insights about:
-        1. Overspending patterns
-        2. Unusual transactions
-        3. Budget recommendations
-        
-        Respond with JSON containing an array of insights with:
-        - type: "overspending", "anomaly", "suggestion"
-        - title: brief title
-        - description: detailed description
-        - category: relevant category
-        - confidence: confidence score 0.0-1.0
-        """
-        
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are a financial advisor AI. Always respond with valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.4
-            )
-            
-            content = response.choices[0].message.content
-            if content:
-                result = json.loads(content)
-                return result
-            else:
-                raise ValueError("Empty response from AI")
-        except Exception as e:
-            return {
-                "insights": [],
-                "error": str(e)
-            }
 
     def detect_anomalies(self, transaction_data: Dict[str, Any], user_history: list) -> Dict[str, Any]:
         """Detect anomalous transactions"""

@@ -24,6 +24,7 @@ router = APIRouter()
 @router.get("/")
 def get_categories(
     include_inactive: bool = Query(False, description="Include inactive categories"),
+    include_system: bool = Query(False, description="Include system categories"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -33,7 +34,8 @@ def get_categories(
     categories = CategoryService.get_user_categories(
         db=db,
         user_id=current_user.id,
-        include_inactive=include_inactive
+        include_inactive=include_inactive,
+        include_system=include_system
     )
 
     # If a user has no categories at all, seed the 5 fixed defaults on the fly
@@ -44,6 +46,7 @@ def get_categories(
                 db=db,
                 user_id=current_user.id,
                 include_inactive=include_inactive,
+                include_system=include_system
             )
         except Exception:
             # Do not block response; fall through with empty list
@@ -58,6 +61,7 @@ def get_categories(
             user_id=category.user_id,
             name=category.name,
             color=category.color,
+            emoji=category.emoji,
             is_default=category.is_default,
             is_active=category.is_active,
             can_modify=can_modify,
@@ -148,6 +152,7 @@ def create_category(
             user_id=category.user_id,
             name=category.name,
             color=category.color,
+            emoji=category.emoji,
             is_default=category.is_default,
             is_active=category.is_active,
             can_modify=can_modify,
@@ -182,6 +187,7 @@ def update_category(
             user_id=category.user_id,
             name=category.name,
             color=category.color,
+            emoji=category.emoji,
             is_default=category.is_default,
             is_active=category.is_active,
             can_modify=can_modify,
@@ -245,6 +251,7 @@ def create_default_categories(
             user_id=category.user_id,
             name=category.name,
             color=category.color,
+            emoji=category.emoji,
             is_default=category.is_default,
             is_active=category.is_active,
             can_modify=can_modify,
@@ -256,27 +263,6 @@ def create_default_categories(
     return response_categories
 
 
-@router.get("/suggest/{merchant}")
-def get_categorization_suggestions(
-    merchant: str,
-    description: Optional[str] = Query(None),
-    amount: Optional[float] = Query(None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """Get categorization suggestions for a merchant"""
-    suggestions = CategorizationService.get_categorization_suggestions(
-        db=db,
-        user_id=current_user.id,
-        merchant=merchant,
-        description=description or "",
-        amount=amount or 0.0
-    )
-
-    return {
-        "merchant": merchant,
-        "suggestions": suggestions
-    }
 
 
 @router.post("/test-keywords")

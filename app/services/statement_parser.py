@@ -6,7 +6,9 @@ from datetime import datetime, date
 import io
 import json
 import openai
+import uuid
 from app.core.config import settings
+from app.services.merchant_service import MerchantService
 
 class StatementParser:
     def __init__(self):
@@ -169,7 +171,7 @@ class StatementParser:
         except Exception as e:
             raise ValueError(f"Error parsing CSV: {str(e)}")
 
-    def parse_pdf_statement(self, file_content: bytes, allowed_categories: Optional[List[str]] = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    def parse_pdf_statement(self, file_content: bytes, allowed_categories: Optional[List[str]] = None, user_id: Optional[uuid.UUID] = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Parse PDF bank statement using ChatGPT for intelligent extraction"""
         try:
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
@@ -240,7 +242,7 @@ class StatementParser:
         limited_lines = transaction_lines[:200]  # Limit to first 200 relevant lines
         return '\n'.join(limited_lines)
 
-    def _extract_transactions_with_ai(self, text: str, allowed_categories: Optional[List[str]] = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    def _extract_transactions_with_ai(self, text: str, allowed_categories: Optional[List[str]] = None, user_id: Optional[uuid.UUID] = None) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Use ChatGPT to intelligently extract transactions and statement period from PDF text"""
         
         # Extract only transaction-relevant content to reduce token usage
@@ -255,6 +257,26 @@ class StatementParser:
         IMPORTANT - Category Selection:
         You MUST choose categories ONLY from this exact list: [{category_list}]
         If uncertain, use "Uncategorized" as the category.
+        """
+        
+        # Add existing merchant information for standardization
+        merchant_constraint = ""
+        if user_id:
+            # Import here to avoid circular imports
+            from app.core.database import SessionLocal
+            with SessionLocal() as db:
+                merchant_info = MerchantService.get_merchants_for_ai_prompt(db, user_id)
+                merchant_constraint = f"""
+        
+        CRITICAL - Merchant Standardization:
+        You MUST use existing merchant names when they match. Here are the user's existing merchants:
+        {merchant_info}
+        
+        When standardizing new merchants:
+        - Use the exact canonical names from the list above if they match
+        - For new merchants, standardize to common brand names (e.g., "MAKRO INDEPENDENCIA" → "Makro")
+        - Remove location details, store numbers, and unnecessary text
+        - Use proper capitalization (e.g., "Makro" not "MAKRO")
         """
         
         prompt = f"""
@@ -323,9 +345,15 @@ class StatementParser:
         - For USD: Amount far right with international merchants
         - Date format must be YYYY-MM-DD
         - Be very careful with date parsing - look for context clues about date format
-        - For merchant names, clean up and normalize the text
         - Include both debit and credit transactions
         - If statement period is not explicitly stated, infer from transaction dates
+        - IMPORTANT: For merchant names, provide a clean, standardized merchant name (e.g., "MAKRO INDEPENDENCIA" → "Makro", "STEAMGAMES.COM" → "Steam")
+        - Remove location details, store numbers, and unnecessary text from merchant field
+        - Standardize to common brand names
+        - Use proper capitalization (e.g., "Makro" not "MAKRO")
+        - The "merchant" field should contain the clean, standardized merchant name
+        - The "description" field should contain the full original description from the statement
+        {merchant_constraint}
         {category_constraint}
         """
 
@@ -643,12 +671,12 @@ class StatementParser:
         except ValueError:
             return 0.0
     
-    def parse_pdf(self, file_path: str, allowed_categories: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    def parse_pdf(self, file_path: str, allowed_categories: Optional[List[str]] = None, user_id: Optional[uuid.UUID] = None) -> List[Dict[str, Any]]:
         """Parse PDF file given file path (wrapper for enhanced service compatibility)"""
         with open(file_path, 'rb') as file:
             file_content = file.read()
         
-        transactions, _ = self.parse_pdf_statement(file_content, allowed_categories)
+        transactions, _ = self.parse_pdf_statement(file_content, allowed_categories, user_id)
         return transactions
     
     def parse_csv(self, file_path: str) -> List[Dict[str, Any]]:

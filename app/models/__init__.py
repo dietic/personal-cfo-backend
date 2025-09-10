@@ -12,6 +12,7 @@ from app.models.alert import Alert
 from app.models.user_excluded_keyword import UserExcludedKeyword
 from app.models.user_keyword_rule import UserKeywordRule
 from app.models.income import Income
+from app.models.merchant import Merchant
 
 __all__ = [
     "User",
@@ -27,4 +28,5 @@ __all__ = [
     "UserExcludedKeyword",
     "UserKeywordRule",
     "Income",
+    "Merchant",
 ]

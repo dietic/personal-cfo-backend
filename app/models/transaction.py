@@ -18,7 +18,7 @@ class Transaction(Base):
     category = Column(String)
     transaction_date = Column(Date, nullable=False)
     tags = Column(String)  # JSON string for SQLite compatibility
-    description = Column(String)
+    description = Column(String, nullable=False)
     ai_confidence = Column(Numeric(3, 2))  # AI categorization confidence (0.00-1.00)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

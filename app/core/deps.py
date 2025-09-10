@@ -94,7 +94,7 @@ def require_user_type(min_user_type: UserTypeEnum) -> Callable:
         UserTypeEnum.PRO: 2,
     }
     
-    def user_type_checker(current_user: User = Depends(get_current_active_user)) -> User:
+    def _user_type_checker(current_user: User) -> User:
         # Admins bypass all plan tier requirements
         if getattr(current_user, "is_admin", False):
             return current_user
@@ -108,5 +108,8 @@ def require_user_type(min_user_type: UserTypeEnum) -> Callable:
                 detail=f"User type required: {min_user_type.value} or higher"
             )
         return current_user
+    
+    def user_type_checker(current_user: User = Depends(get_current_active_user)) -> User:
+        return _user_type_checker(current_user)
     
     return user_type_checker

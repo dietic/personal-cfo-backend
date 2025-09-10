@@ -3,16 +3,18 @@ API endpoints for managing category keywords.
 Provides REST API for CRUD operations on user-defined keywords.
 """
 from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import get_current_active_user
-from app.models.user import User
+from app.core.deps import get_current_active_user, require_user_type
+from app.models.user import User, UserTypeEnum
 from app.services.keyword_service import KeywordService
+from app.services.ai_keyword_service import AIKeywordService
 from app.schemas.keyword_schemas import (
     KeywordCreate, KeywordUpdate, KeywordResponse, 
-    KeywordSummaryResponse, CategorizationRequest
+    KeywordSummaryResponse, CategorizationRequest,
+    AIKeywordGenerationRequest, AIKeywordGenerationResponse, AIUsageStatsResponse
 )
 
 router = APIRouter()
@@ -264,3 +266,90 @@ async def categorize_transactions_with_keywords(
             "uncategorized": len([t for t in categorized_transactions if t['category'] == 'Uncategorized'])
         }
     }
+
+
+@router.post("/generate-ai-keywords/{category_id}", response_model=AIKeywordGenerationResponse)
+async def generate_ai_keywords(
+    category_id: str,
+    ai_request: AIKeywordGenerationRequest,
+    request: Request,
+    current_user: User = Depends(require_user_type(UserTypeEnum.PLUS)),
+    db: Session = Depends(get_db)
+):
+    """Generate AI-powered keywords for a category"""
+    from app.models.category import Category
+    from app.tasks.ai_tasks import generate_ai_keywords_task
+    
+    # Get the category
+    category = db.query(Category).filter(
+        Category.id == category_id,
+        Category.user_id == str(current_user.id)
+    ).first()
+    
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found"
+        )
+    
+    # Check if category already has AI-generated keywords
+    if category.ai_seeded_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="AI keywords have already been generated for this category"
+        )
+    
+    # Check if this is a default category
+    if category.is_default:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot generate AI keywords for default categories. Default categories already come with pre-defined keywords."
+        )
+    
+    # Launch background task
+    task = generate_ai_keywords_task.delay(
+        str(current_user.id),
+        str(category.id),
+        ai_request.clear_existing
+    )
+    
+    return AIKeywordGenerationResponse(
+        message="AI keyword generation started in background. Keywords will be added shortly.",
+        keywords_added=0,  # Will be updated when task completes
+        category_id=category_id,
+        category_name=category.name,
+        task_id=task.id  # Include task ID for tracking
+    )
+
+
+@router.get("/task-status/{task_id}")
+async def get_task_status(
+    task_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get status of a background task"""
+    from app.tasks.ai_tasks import generate_ai_keywords_task
+    from celery.result import AsyncResult
+    
+    # Get task result
+    task_result = AsyncResult(task_id, app=generate_ai_keywords_task.app)
+    
+    return {
+        "task_id": task_id,
+        "status": task_result.status,
+        "result": task_result.result if task_result.ready() else None,
+        "successful": task_result.successful() if task_result.ready() else None
+    }
+
+
+@router.get("/ai-usage-stats", response_model=AIUsageStatsResponse)
+async def get_ai_keyword_usage_stats(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get AI keyword generation usage statistics"""
+    ai_keyword_service = AIKeywordService(db)
+    
+    stats = ai_keyword_service.get_ai_usage_stats(current_user)
+    
+    return AIUsageStatsResponse(**stats)

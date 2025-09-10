@@ -37,7 +37,7 @@ async def analyze_spending_patterns(
     # Get recent transactions
     transactions = db.query(Transaction).join(Card).filter(
         Card.user_id == current_user.id
-    ).order_by(Transaction.transaction_date.desc()).limit(100).all()
+    ).order_by(Transaction.transaction_date.desc()).all()
     
     # Convert to format for AI analysis
     transactions_data = [

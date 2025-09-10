@@ -7,6 +7,7 @@ import uuid
 class CategoryBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=50)
     color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')  # Hex color validation
+    emoji: Optional[str] = Field(None, max_length=10)  # Emoji for category icon
     is_active: bool = True
 
 
@@ -17,6 +18,7 @@ class CategoryCreate(CategoryBase):
 class CategoryUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=50)
     color: Optional[str] = Field(None, pattern=r'^#[0-9A-Fa-f]{6}$')
+    emoji: Optional[str] = Field(None, max_length=10)
     is_active: Optional[bool] = None
 
 

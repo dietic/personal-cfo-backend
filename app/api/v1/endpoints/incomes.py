@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import date, datetime
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
 from app.core.deps import get_current_active_user
@@ -11,6 +14,7 @@ from app.models.income import Income as IncomeModel
 from app.models.transaction import Transaction
 from app.models.card import Card
 from app.schemas.income import IncomeCreate, IncomeUpdate, Income
+from app.services.income_service import IncomeService
 
 router = APIRouter()
 
@@ -77,10 +81,10 @@ async def create_income(
             detail="Card not found or does not belong to user"
         )
     
-    # Set recurrence_day from income_date if this is a recurring income
-    recurrence_day = None
+    # Set recurring_day from income_date if this is a recurring income
+    recurring_day = None
     if income_create.is_recurring:
-        recurrence_day = income_create.income_date.day
+        recurring_day = income_create.income_date.day
     
     income = IncomeModel(
         user_id=current_user.id,
@@ -88,28 +92,52 @@ async def create_income(
         amount=income_create.amount,
         currency=income_create.currency,
         description=income_create.description,
+        source=income_create.source,
         income_date=income_create.income_date,
         is_recurring=income_create.is_recurring,
-        recurrence_day=recurrence_day
+        recurring_day=recurring_day
     )
+    
+    # Validate income amount is positive
+    income.validate_amount()
     
     db.add(income)
     db.commit()
     db.refresh(income)
     
+    logger.info(f"Created income: {income.description} - {income.amount} {income.currency}")
+    
+    # Create past recurring transactions if this is a recurring income
+    if income.is_recurring:
+        income_service = IncomeService(db)
+        past_count = income_service.create_past_recurring_transactions(income)
+        logger.info(f"Created {past_count} past recurring transactions")
+    
     # Create associated transaction for the income
     transaction = Transaction(
         card_id=income_create.card_id,
-        merchant=f"Income: {income_create.description or 'General Income'}",
+        merchant=income_create.source,
         amount=income_create.amount,
         currency=income_create.currency,
         category="Income",
         transaction_date=income_create.income_date,
-        description=f"Income transaction: {income_create.description or 'General Income'}"
+        description=f"Income: {income_create.description}"
     )
     
-    db.add(transaction)
-    db.commit()
+    try:
+        db.add(transaction)
+        db.commit()
+        
+        logger.info(f"Created transaction for income: {transaction.merchant} - {transaction.amount} {transaction.currency}")
+        
+    except Exception as e:
+        logger.error(f"Failed to create transaction for income: {e}", exc_info=True)
+        db.rollback()
+        # Re-raise the exception so the API returns an error
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create transaction: {str(e)}"
+        )
     
     return income
 
@@ -167,23 +195,26 @@ async def update_income(
                 detail="Card not found or does not belong to user"
             )
     
-    # Handle recurrence_day logic: if is_recurring is being set to True and income_date exists,
-    # automatically set recurrence_day from income_date
+    # Handle recurring_day logic: if is_recurring is being set to True and income_date exists,
+    # automatically set recurring_day from income_date
     if update_data.get('is_recurring') is True:
         if 'income_date' in update_data:
-            update_data['recurrence_day'] = update_data['income_date'].day
+            update_data['recurring_day'] = update_data['income_date'].day
         elif income.income_date:
-            update_data['recurrence_day'] = income.income_date.day
+            update_data['recurring_day'] = income.income_date.day
     elif update_data.get('is_recurring') is False:
-        # If turning off recurrence, clear recurrence_day
-        update_data['recurrence_day'] = None
+        # If turning off recurrence, clear recurring_day
+        update_data['recurring_day'] = None
     
-    # If income_date is being updated and this is a recurring income, update recurrence_day too
+    # If income_date is being updated and this is a recurring income, update recurring_day too
     if 'income_date' in update_data and income.is_recurring:
-        update_data['recurrence_day'] = update_data['income_date'].day
+        update_data['recurring_day'] = update_data['income_date'].day
     
     for field, value in update_data.items():
         setattr(income, field, value)
+    
+    # Validate income amount is positive after update
+    income.validate_amount()
     
     db.commit()
     db.refresh(income)

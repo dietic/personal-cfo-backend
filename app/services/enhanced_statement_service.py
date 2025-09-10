@@ -98,7 +98,7 @@ class EnhancedStatementService:
             parser = StatementParser()
             
             if statement.file_type.lower() == 'pdf':
-                transactions_data = parser.parse_pdf(statement.file_path, allowed_categories)
+                transactions_data = parser.parse_pdf(statement.file_path, allowed_categories, statement.user_id)
             elif statement.file_type.lower() == 'csv':
                 transactions_data = parser.parse_csv(statement.file_path)
             else:
@@ -158,6 +158,20 @@ class EnhancedStatementService:
             
             # Save transactions to database
             db.add_all(transactions)
+            db.flush()  # Flush to get transaction IDs
+            
+            # Learn from each transaction to build merchant registry
+            for transaction in transactions:
+                try:
+                    MerchantService.learn_from_transaction(
+                        db=db,
+                        user_id=statement.user_id,
+                        raw_merchant=transaction.description,  # Original description from statement
+                        standardized_merchant=transaction.merchant,  # AI-standardized merchant name
+                        category=None  # Will be set during categorization
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to learn from merchant {transaction.merchant}: {str(e)}")
             
             # Update statement with extracted data
             statement.processed_transactions = json.dumps([

@@ -14,9 +14,11 @@ class Category(Base):
     user_id = Column(GUID(), ForeignKey("users.id"), nullable=True)  # Nullable for system categories
     name = Column(String, nullable=False)
     color = Column(String, nullable=True)  # Hex color code for UI
+    emoji = Column(String, nullable=True)  # Emoji for category icon
     is_default = Column(Boolean, default=False)  # System default categories
     is_system = Column(Boolean, default=False)  # True for predefined Spanish categories
     is_active = Column(Boolean, default=True)
+    ai_seeded_at = Column(DateTime(timezone=True), nullable=True)  # When AI keywords were generated
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

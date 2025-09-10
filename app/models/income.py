@@ -17,11 +17,12 @@ class Income(Base):
     amount = Column(Numeric(10, 2), nullable=False)
     currency = Column(String(3), nullable=False, default="USD")
     description = Column(String, nullable=False)
+    source = Column(String, nullable=False, default="General Income")  # Where the income comes from
     income_date = Column(Date, nullable=False)
     
     # Recurring income settings
     is_recurring = Column(Boolean, default=False)
-    recurrence_day = Column(Integer, nullable=True)  # Day of month for recurrence (1-31)
+    recurring_day = Column(Integer, nullable=True)  # Day of month for recurrence (1-31)
     last_processed_date = Column(Date, nullable=True)  # Last date this recurring income was processed
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -40,10 +41,16 @@ class Income(Base):
             "amount": float(self.amount),
             "currency": self.currency,
             "description": self.description,
+            "source": self.source,
             "income_date": self.income_date.isoformat(),
             "is_recurring": self.is_recurring,
-            "recurrence_day": self.recurrence_day,
+            "recurring_day": self.recurring_day,
             "last_processed_date": self.last_processed_date.isoformat() if self.last_processed_date else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
+    
+    def validate_amount(self):
+        """Validate that income amount is positive"""
+        if self.amount <= 0:
+            raise ValueError("Income amount must be positive")

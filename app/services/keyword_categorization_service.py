@@ -36,6 +36,9 @@ class KeywordCategorizationService:
             return None
         
         text_to_match = f"{merchant} {description}".lower().strip()
+        # Normalize apostrophes and spaces for consistent matching
+        text_to_match = text_to_match.replace("'", "")
+        text_to_match = text_to_match.replace(" ", "")
         
         # Group keywords by category and find matches
         category_matches = {}

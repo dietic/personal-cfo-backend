@@ -107,6 +107,20 @@ and provides categorization and validation of transactions.
                 transactions_data, default_card, statement_id
             )
 
+            # Step 4.5: Learn from transactions to build merchant registry
+            try:
+                from app.services.merchant_service import MerchantService
+                for transaction in created_transactions:
+                    MerchantService.learn_from_transaction(
+                        db=self.db,
+                        user_id=statement.user_id,
+                        raw_merchant=transaction.description,  # Original description from statement
+                        standardized_merchant=transaction.merchant,  # AI-standardized merchant name
+                        category=None  # Will be set during categorization
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to learn from merchants: {str(e)}")
+
             # Step 5: Update statement status
             statement.status = "completed"
             statement.extraction_status = "completed"
@@ -152,6 +166,10 @@ and provides categorization and validation of transactions.
             }
 
             logger.info(f"Successfully processed statement {statement_id} with {len(created_transactions)} transactions")
+            
+            # Delete statement file after successful processing
+            self._delete_statement_file(statement)
+            
             return result
 
         except Exception as e:
@@ -166,6 +184,11 @@ and provides categorization and validation of transactions.
                 self.db.commit()
 
             logger.error(f"Failed to process statement {statement_id}: {str(e)}")
+            
+            # Delete statement file even if processing failed
+            if statement:
+                self._delete_statement_file(statement)
+            
             raise ProcessingError(f"Failed to process statement: {str(e)}")
 
     def _extract_with_ai(
@@ -303,6 +326,15 @@ and provides categorization and validation of transactions.
             if not hasattr(statement, 'categorization_retries'):
                 statement.categorization_retries = 0
             statement.categorization_retries += 1
+
+    def _delete_statement_file(self, statement: Statement):
+        """Delete the physical statement file after processing"""
+        try:
+            if statement.file_path and os.path.exists(statement.file_path):
+                os.remove(statement.file_path)
+                logger.info(f"Deleted statement file: {statement.file_path}")
+        except Exception as e:
+            logger.warning(f"Failed to delete statement file {statement.file_path}: {str(e)}")
 
     def get_statement_status(self, statement_id: uuid.UUID) -> Dict[str, Any]:
         """Get current processing status of a statement"""

@@ -42,3 +42,27 @@ class KeywordSummaryResponse(BaseModel):
 class CategorizationRequest(BaseModel):
     """Schema for transaction categorization request"""
     description: str = Field(..., description="Transaction description to categorize")
+
+
+class AIKeywordGenerationRequest(BaseModel):
+    """Schema for AI keyword generation request"""
+    clear_existing: bool = Field(False, description="Whether to clear existing keywords before generating new ones")
+
+
+class AIKeywordGenerationResponse(BaseModel):
+    """Schema for AI keyword generation response"""
+    message: str
+    keywords_added: int
+    category_id: str
+    category_name: str
+    task_id: Optional[str] = Field(None, description="ID of the background task for tracking")
+
+
+class AIUsageStatsResponse(BaseModel):
+    """Schema for AI keyword usage statistics"""
+    current_usage: int
+    monthly_limit: int
+    last_used: Optional[datetime]
+    reset_at: Optional[datetime]
+    remaining: int
+    plan_tier: str

@@ -47,49 +47,6 @@ async def update_user_profile(
     db.refresh(current_user)
     return current_user
 
-@router.post("/profile/photo")
-async def upload_profile_photo(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Upload user profile photo"""
-    # Validate file type
-    if not file.content_type.startswith('image/'):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be an image"
-        )
-    
-    # Check file size (1MB max)
-    file_size = 0
-    content = await file.read()
-    file_size = len(content)
-    
-    if file_size > 1024 * 1024:  # 1MB
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File size must be less than 1MB"
-        )
-    
-    # Create uploads directory if it doesn't exist
-    upload_dir = Path(settings.UPLOAD_DIR) / "profile_photos"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Generate unique filename
-    file_extension = file.filename.split('.')[-1]
-    filename = f"{current_user.id}.{file_extension}"
-    file_path = upload_dir / filename
-    
-    # Save file
-    with open(file_path, "wb") as buffer:
-        buffer.write(content)
-    
-    # Update user profile picture URL
-    current_user.profile_picture_url = f"/uploads/profile_photos/{filename}"
-    db.commit()
-    
-    return {"message": "Profile photo updated successfully", "url": current_user.profile_picture_url}
 
 @router.get("/notifications", response_model=UserNotificationPreferences)
 async def get_notification_preferences(

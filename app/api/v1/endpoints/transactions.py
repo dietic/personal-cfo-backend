@@ -17,7 +17,7 @@ router = APIRouter()
 @router.get("/", response_model=List[TransactionSchema])
 async def get_transactions(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    limit: Optional[int] = Query(None, ge=1),
     card_id: Optional[uuid.UUID] = None,
     category: Optional[str] = None,
     start_date: Optional[date] = None,
@@ -37,7 +37,10 @@ async def get_transactions(
     if end_date:
         query = query.filter(Transaction.transaction_date <= end_date)
     
-    transactions = query.offset(skip).limit(limit).all()
+    query = query.offset(skip)
+    if limit is not None:
+        query = query.limit(limit)
+    transactions = query.all()
     return transactions
 
 @router.post("/", response_model=TransactionSchema)
@@ -112,6 +115,13 @@ async def update_transaction(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Transaction not found"
+        )
+
+    # Check if transaction is in Income category (not editable)
+    if transaction.category == "Income":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Transactions in the Income category cannot be edited. You can only delete them."
         )
     
     update_data = transaction_update.dict(exclude_unset=True)
