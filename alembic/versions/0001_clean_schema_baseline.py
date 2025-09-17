@@ -310,10 +310,9 @@ def upgrade() -> None:
         sa.Column('user_id', GUID(), nullable=False),
         sa.Column('name', sa.String(), nullable=False),
         sa.Column('amount', sa.Numeric(precision=10, scale=2), nullable=False),
-        sa.Column('currency', sa.String(length=3), nullable=False),
-        sa.Column('frequency', sa.String(), nullable=False),
-        sa.Column('next_payment_date', sa.Date(), nullable=False),
+        sa.Column('due_date', sa.Date(), nullable=False),
         sa.Column('category', sa.String(), nullable=True),
+        sa.Column('reminder_days', sa.Integer(), nullable=True, server_default='3'),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
@@ -324,10 +323,12 @@ def upgrade() -> None:
         sa.Column('id', GUID(), nullable=False),
         sa.Column('user_id', GUID(), nullable=False),
         sa.Column('keyword', sa.String(length=255), nullable=False),
+        sa.Column('keyword_normalized', sa.String(length=255), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
-        sa.PrimaryKeyConstraint('id')
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('user_id', 'keyword_normalized', name='uq_user_excluded_keyword_normalized')
     )
 
     op.create_table('user_keyword_rules',
