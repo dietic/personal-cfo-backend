@@ -346,7 +346,9 @@ def upgrade() -> None:
     if dialect == "postgresql":
         op.execute("ALTER TABLE users ALTER COLUMN preferred_currency TYPE currencyenum USING preferred_currency::currencyenum")
         op.execute("ALTER TABLE users ALTER COLUMN timezone TYPE timezoneenum USING timezone::timezoneenum")
+        op.execute("ALTER TABLE users ALTER COLUMN plan_tier DROP DEFAULT")
         op.execute("ALTER TABLE users ALTER COLUMN plan_tier TYPE usertypeenum USING plan_tier::usertypeenum")
+        op.execute("ALTER TABLE users ALTER COLUMN plan_tier SET DEFAULT 'free'::usertypeenum")
         op.execute("ALTER TABLE alerts ALTER COLUMN alert_type TYPE alerttype USING alert_type::alerttype")
         op.execute("ALTER TABLE alerts ALTER COLUMN severity TYPE alertseverity USING severity::alertseverity")
 
