@@ -96,6 +96,7 @@ def upgrade() -> None:
         sa.Column('email_notifications_enabled', sa.Boolean(), nullable=True, server_default='true'),
         sa.Column('push_notifications_enabled', sa.Boolean(), nullable=True, server_default='true'),
         sa.Column('otp_code', sa.String(), nullable=True),
+        sa.Column('otp_expires_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('otp_attempts', sa.Integer(), nullable=True, server_default='0'),
         sa.Column('otp_last_sent_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('plan_tier', sa.String(), nullable=True, server_default='free'),
