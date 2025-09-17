@@ -74,13 +74,20 @@ def upgrade() -> None:
                 END IF;
             END $$;
             """)
+        op.execute("""
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'usertypeenum') THEN
+                    CREATE TYPE usertypeenum AS ENUM ('free','plus','pro');
+                END IF;
+            END $$;
+            """)
 
     # users table
     op.create_table('users',
         sa.Column('id', GUID(), nullable=False),
         sa.Column('email', sa.String(), nullable=False),
         sa.Column('password_hash', sa.String(), nullable=False),
-        sa.Column('is_active', sa.Boolean(), nullable=True, server_default='true'),
+        sa.Column('is_active', sa.Boolean(), nullable=True, server_default='false'),
         sa.Column('is_admin', sa.Boolean(), nullable=True, server_default='false'),
         sa.Column('first_name', sa.String(), nullable=True),
         sa.Column('last_name', sa.String(), nullable=True),
@@ -90,16 +97,26 @@ def upgrade() -> None:
         sa.Column('timezone', sa.String(), nullable=True),
         sa.Column('budget_alerts_enabled', sa.Boolean(), nullable=True, server_default='true'),
         sa.Column('payment_reminders_enabled', sa.Boolean(), nullable=True, server_default='true'),
-        sa.Column('transaction_alerts_enabled', sa.Boolean(), nullable=True, server_default='true'),
+        sa.Column('transaction_alerts_enabled', sa.Boolean(), nullable=True, server_default='false'),
         sa.Column('weekly_summary_enabled', sa.Boolean(), nullable=True, server_default='true'),
         sa.Column('monthly_reports_enabled', sa.Boolean(), nullable=True, server_default='true'),
         sa.Column('email_notifications_enabled', sa.Boolean(), nullable=True, server_default='true'),
-        sa.Column('push_notifications_enabled', sa.Boolean(), nullable=True, server_default='true'),
+        sa.Column('push_notifications_enabled', sa.Boolean(), nullable=True, server_default='false'),
         sa.Column('otp_code', sa.String(), nullable=True),
         sa.Column('otp_expires_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('otp_attempts', sa.Integer(), nullable=True, server_default='0'),
         sa.Column('otp_last_sent_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('plan_tier', sa.String(), nullable=True, server_default='free'),
+        sa.Column('plan_status', sa.String(), nullable=False, server_default='inactive'),
+        sa.Column('billing_currency', sa.String(), nullable=False, server_default='PEN'),
+        sa.Column('current_period_end', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('cancel_at_period_end', sa.Boolean(), nullable=True, server_default='false'),
+        sa.Column('provider_customer_id', sa.String(), nullable=True),
+        sa.Column('provider_subscription_id', sa.String(), nullable=True),
+        sa.Column('last_payment_status', sa.String(), nullable=True),
+        sa.Column('ai_keyword_usage_count', sa.Integer(), nullable=False, server_default='0'),
+        sa.Column('ai_keyword_last_used', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('ai_keyword_reset_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint('id')
@@ -329,6 +346,7 @@ def upgrade() -> None:
     if dialect == "postgresql":
         op.execute("ALTER TABLE users ALTER COLUMN preferred_currency TYPE currencyenum USING preferred_currency::currencyenum")
         op.execute("ALTER TABLE users ALTER COLUMN timezone TYPE timezoneenum USING timezone::timezoneenum")
+        op.execute("ALTER TABLE users ALTER COLUMN plan_tier TYPE usertypeenum USING plan_tier::usertypeenum")
         op.execute("ALTER TABLE alerts ALTER COLUMN alert_type TYPE alerttype USING alert_type::alerttype")
         op.execute("ALTER TABLE alerts ALTER COLUMN severity TYPE alertseverity USING severity::alertseverity")
 
@@ -362,6 +380,7 @@ def downgrade() -> None:
     if dialect == "postgresql":
         op.execute("DROP TYPE IF EXISTS alertseverity CASCADE;")
         op.execute("DROP TYPE IF EXISTS alerttype CASCADE;")
+        op.execute("DROP TYPE IF EXISTS usertypeenum CASCADE;")
         op.execute("DROP TYPE IF EXISTS timezoneenum CASCADE;")
         op.execute("DROP TYPE IF EXISTS currencyenum CASCADE;")
 
