@@ -112,6 +112,21 @@ def validate_minimum_categories(
     }
 
 
+@router.get("/validate-minimum-keywords")
+def validate_minimum_keywords(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Check if all categories have at least 20 keywords for statement upload"""
+    validation_result = CategoryService.validate_minimum_keywords(
+        db=db,
+        user_id=current_user.id,
+        min_keywords=20
+    )
+
+    return validation_result
+
+
 @router.get("/permissions")
 def get_category_permissions(
     current_user: User = Depends(get_current_active_user)

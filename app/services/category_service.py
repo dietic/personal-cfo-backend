@@ -388,6 +388,39 @@ class CategoryService:
         return count >= 5
 
     @staticmethod
+    def validate_minimum_keywords(db: Session, user_id: uuid.UUID, min_keywords: int = 20) -> Dict[str, Any]:
+        """Check if all categories have at least the minimum number of keywords
+
+        Returns:
+            Dict with validation result and details about categories with insufficient keywords
+        """
+        categories = CategoryService.get_user_categories(db, user_id, include_system=True)
+
+        insufficient_categories = []
+        all_categories_valid = True
+
+        for category in categories:
+            keyword_count = len(category.keywords)
+            if keyword_count < min_keywords:
+                all_categories_valid = False
+                insufficient_categories.append({
+                    "category_id": str(category.id),
+                    "category_name": category.name,
+                    "current_keywords": keyword_count,
+                    "required_keywords": min_keywords
+                })
+
+        return {
+            "has_minimum_keywords": all_categories_valid,
+            "min_keywords_required": min_keywords,
+            "insufficient_categories": insufficient_categories,
+            "total_categories": len(categories),
+            "valid_categories": len(categories) - len(insufficient_categories),
+            "message": "All categories have sufficient keywords" if all_categories_valid
+                      else f"{len(insufficient_categories)} categories need at least {min_keywords} keywords each"
+        }
+
+    @staticmethod
     def get_category_usage_stats(db: Session, user_id: uuid.UUID) -> Dict[str, Any]:
         """Get usage statistics for user categories"""
         categories = CategoryService.get_user_categories(db, user_id, include_system=False)
