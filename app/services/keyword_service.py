@@ -85,6 +85,25 @@ class KeywordService:
         self.db.delete(keyword)
         self.db.commit()
         return True
+
+    def remove_keywords_bulk(self, user_id: str, keyword_ids: List[str]) -> int:
+        """Remove multiple keywords by IDs. Returns number deleted."""
+        if not keyword_ids:
+            return 0
+
+        delete_q = self.db.query(CategoryKeyword).filter(
+            and_(
+                CategoryKeyword.user_id == user_id,
+                CategoryKeyword.id.in_(keyword_ids)
+            )
+        )
+        deleted_count = delete_q.count()
+        if deleted_count == 0:
+            return 0
+
+        delete_q.delete(synchronize_session=False)
+        self.db.commit()
+        return deleted_count
     
     def update_keyword(self, user_id: str, keyword_id: str, keyword_text: str = None, description: str = None) -> Optional[CategoryKeyword]:
         """Update a keyword"""
@@ -176,46 +195,33 @@ class KeywordService:
         return summary
     
     def seed_default_keywords(self, user_id: str) -> None:
-        """Seed default keywords for a new user with 15 keywords per category"""
+        """Seed default keywords for a new user with curated keywords per category"""
         # Get user's categories
         categories = self.db.query(Category).filter(Category.user_id == user_id).all()
         
-        # Default keywords mapping - 15 keywords per category in Spanish
+        # Default keywords mapping - curated keywords per category in Spanish
         default_keywords = {
             'Alimentación': [
-                'restaurante', 'comida', 'almuerzo', 'desayuno', 'cena', 'café', 'cafetería',
-                'pizza', 'hamburguesa', 'supermercado', 'mercado', 'panadería', 'carnicería',
-                'delivery', 'pedido'
-            ],
-            'Transporte': [
-                'gasolina', 'combustible', 'uber', 'taxi', 'bus', 'metro', 'tren',
-                'estacionamiento', 'peaje', 'auto', 'coche', 'vehículo', 'transporte',
-                'bicicleta', 'motocicleta'
+                'la lucha', 'norkys', 'rokys', 'bembos', 'pizza hut',
+                'san antonio', 'tottus', 'plazavea', 'la iberica', 'papa johns'
             ],
             'Compras': [
-                'tienda', 'centro comercial', 'compra', 'retail', 'ropa', 'vestimenta',
-                'amazon', 'mercadolibre', 'shopping', 'boutique', 'outlet', 'farmacia',
-                'droguería', 'librería', 'juguetería'
+                'ripley', 'saga falabella', 'oechsle', 'linio', 'mercadolibre',
+                'coolbox', 'hiraoka', 'casaideas', 'miniso', 'curacao'
             ],
             'Entretenimiento': [
-                'cine', 'película', 'teatro', 'concierto', 'juego', 'spotify', 'netflix',
-                'entretenimiento', 'diversión', 'ocio', 'youtube', 'streaming', 'música',
-                'deporte', 'gimnasio'
-            ],
-            'Servicios Públicos': [
-                'electricidad', 'luz', 'agua', 'gas', 'internet', 'teléfono', 'móvil',
-                'celular', 'servicio', 'factura', 'cable', 'wifi', 'calefacción',
-                'basura', 'alcantarillado'
-            ],
-            'Salud': [
-                'doctor', 'médico', 'hospital', 'clínica', 'farmacia', 'medicina',
-                'dentista', 'consulta', 'receta', 'seguro médico', 'copago',
-                'urgencias', 'cirugía', 'terapia', 'laboratorio'
+                'cineplanet', 'cinépolis', 'netflix', 'spotify', 'joinnus',
+                'teleticket', 'epic games', 'steam', 'claro video', 'disney plus'
             ],
             'Vivienda': [
-                'alquiler', 'arriendo', 'hipoteca', 'casa', 'apartamento', 'propiedad',
-                'mantenimiento', 'reparación', 'seguro hogar', 'administración',
-                'inquilino', 'propietario', 'inmobiliaria', 'mudanza', 'muebles'
+                'pacifico seguros', 'rimac seguros', 'la positiva', 'los portales',
+                'decor center', 'decorlux', 'sodimac', 'promart', 'ferretti',
+                'cassinelli'
+            ],
+            'Otros': [
+                'serpost', 'sunat', 'reniec', 'essalud', 'inkafarma',
+                'boticas peru', 'western union', 'claro peru', 'entel peru',
+                'movistar peru'
             ]
         }
         

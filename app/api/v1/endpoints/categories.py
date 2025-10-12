@@ -14,7 +14,6 @@ from app.schemas.category import (
     CategoryKeywordMatch
 )
 from app.services.category_service import CategoryService
-from app.services.categorization_service import CategorizationService
 from app.services.plan_limits import assert_within_limit
 from app.core.exceptions import ValidationError, NotFoundError
 
@@ -117,11 +116,11 @@ def validate_minimum_keywords(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Check if all categories have at least 20 keywords for statement upload"""
+    """Check if all categories have at least 12 keywords for statement upload"""
     validation_result = CategoryService.validate_minimum_keywords(
         db=db,
         user_id=current_user.id,
-        min_keywords=20
+        min_keywords=12
     )
 
     return validation_result

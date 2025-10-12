@@ -1,7 +1,7 @@
 """
 Pydantic schemas for keyword management API.
 """
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -66,3 +66,8 @@ class AIUsageStatsResponse(BaseModel):
     reset_at: Optional[datetime]
     remaining: int
     plan_tier: str
+
+
+class KeywordBulkDeleteRequest(BaseModel):
+    """Schema for bulk keyword deletion"""
+    keyword_ids: List[str] = Field(..., description="List of keyword IDs to delete")

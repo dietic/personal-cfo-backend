@@ -1,6 +1,6 @@
 """
 Enhanced AI-powered statement service that can process any bank statement.
-This service uses the AIStatementExtractor to handle statements from any bank
+This service uses the CleanAIStatementExtractor to handle statements from any bank
 without requiring specific pattern mappings.
 """
 import json

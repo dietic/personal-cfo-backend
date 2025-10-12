@@ -16,6 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY personal-cfo-backend/ .
+# Ensure old migration files are cleared before adding current ones
+RUN rm -rf alembic/versions/*
+COPY personal-cfo-backend/alembic/versions/ alembic/versions/
 
 # Create uploads directory
 RUN mkdir -p uploads

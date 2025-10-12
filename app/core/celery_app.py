@@ -7,7 +7,7 @@ celery_app = Celery(
     "personalcfo",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.statement_tasks", "app.tasks.notification_tasks", "app.tasks.income_tasks", "app.tasks.ai_tasks"]
+    include=["app.tasks.statement_tasks", "app.tasks.income_tasks", "app.tasks.ai_tasks"]
 )
 
 # Configure Celery
@@ -20,7 +20,6 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     task_routes={
         "app.tasks.statement_tasks.*": {"queue": "statements"},
-        "app.tasks.notification_tasks.*": {"queue": "priority"},
         "app.tasks.ai_tasks.*": {"queue": "priority"},
     },
     worker_prefetch_multiplier=1,

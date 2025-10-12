@@ -5,7 +5,6 @@ from typing import Callable
 from app.core.database import get_db
 from app.core.security import verify_token
 from app.models.user import User, UserTypeEnum
-from app.core.permissions import Permission, has_permission
 
 security = HTTPBearer()
 
@@ -70,21 +69,6 @@ def get_current_admin_user(
             detail="Admin privileges required"
         )
     return current_user
-
-def require_permission(permission: Permission) -> Callable:
-    """Dependency factory to require specific permission"""
-    def permission_checker(current_user: User = Depends(get_current_active_user)) -> User:
-        user_type = current_user.plan_tier
-        is_admin = getattr(current_user, "is_admin", False)
-        
-        if not has_permission(user_type, permission, is_admin):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Permission required: {permission.value}"
-            )
-        return current_user
-    
-    return permission_checker
 
 def require_user_type(min_user_type: UserTypeEnum) -> Callable:
     """Dependency factory to require minimum user type"""

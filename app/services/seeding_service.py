@@ -68,11 +68,11 @@ class SeedingService:
 
         # Default categories + keywords (Spanish) aligned with CategoryService
         default_categories = [
-            {"name": "Alimentación", "color": "#FF6B6B", "emoji": "🍕", "keywords": ["restaurante", "comida", "almuerzo", "desayuno", "cena", "café", "cafetería", "pizza", "hamburguesa", "supermercado", "mercado", "panadería", "carnicería", "delivery", "pedido", "kfc", "mcdonalds", "burger king", "bembos", "pizza hut", "papa johns", "subway", "starbucks", "dunkin", "chifa", "norkys", "rokys", "pardos", "rustica", "plaza vea", "wong", "tottus", "metro"]},
-            {"name": "Salud", "color": "#4ECDC4", "emoji": "🏥", "keywords": ["doctor", "médico", "hospital", "clínica", "farmacia", "medicina", "dentista", "consulta", "receta", "seguro", "copago", "urgencias", "cirugía", "terapia", "laboratorio", "inkafarma", "mifarma", "boticas arcangel", "boticas y salud", "san pablo", "clinica internacional", "essalud"]},
-            {"name": "Entretenimiento", "color": "#45B7D1", "emoji": "🎬", "keywords": ["cine", "película", "teatro", "concierto", "juego", "entretenimiento", "diversión", "ocio", "música", "deporte", "gimnasio", "cineplanet", "cinemark", "netflix", "disney+", "hbo", "prime video", "spotify", "youtube", "movistar play", "claro video", "tondero", "joinnus"]},
-            {"name": "Compras", "color": "#96CEB4", "emoji": "🛍️", "keywords": ["tienda", "centro comercial", "compra", "retail", "ropa", "vestimenta", "boutique", "outlet", "librería", "juguetería", "saga falabella", "ripley", "oechsle", "hiraoka", "amazon", "mercadolibre", "aliexpress", "promart", "sodimac", "topitop", "platanitos", "zara", "h&m", "adidas", "nike"]},
-            {"name": "Otros", "color": "#FFEAA7", "emoji": "📦", "keywords": ["transporte", "gasolina", "combustible", "uber", "taxi", "bus", "servicios", "electricidad", "luz", "agua", "gas", "internet", "teléfono", "vivienda", "alquiler", "cabify", "beat", "indrive", "cruz del sur", "flores", "moviltours", "movistar", "claro", "entel", "bitel", "win", "luz del sur", "enel", "sedapal"]},
+            {"name": "Alimentación", "color": "#FF6B6B", "emoji": "🍕", "keywords": ["la lucha", "norkys", "rokys", "bembos", "pizza hut", "san antonio", "tottus", "plazavea", "la iberica", "papa johns"]},
+            {"name": "Entretenimiento", "color": "#DDA0DD", "emoji": "🎬", "keywords": ["cineplanet", "cinépolis", "netflix", "spotify", "joinnus", "teleticket", "epic games", "steam", "claro video", "disney plus"]},
+            {"name": "Compras", "color": "#45B7D1", "emoji": "🛍️", "keywords": ["ripley", "saga falabella", "oechsle", "linio", "mercadolibre", "coolbox", "hiraoka", "casaideas", "miniso", "curacao"]},
+            {"name": "Vivienda", "color": "#F39C12", "emoji": "🏠", "keywords": ["pacifico seguros", "rimac seguros", "la positiva", "los portales", "decor center", "decorlux", "sodimac", "promart", "ferretti", "cassinelli"]},
+            {"name": "Otros", "color": "#95A5A6", "emoji": "📦", "keywords": ["serpost", "sunat", "reniec", "essalud", "inkafarma", "boticas peru", "western union", "claro peru", "entel peru", "movistar peru"]},
         ]
 
         insert_category_sql = text(

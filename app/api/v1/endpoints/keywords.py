@@ -14,7 +14,8 @@ from app.services.ai_keyword_service import AIKeywordService
 from app.schemas.keyword_schemas import (
     KeywordCreate, KeywordUpdate, KeywordResponse, 
     KeywordSummaryResponse, CategorizationRequest,
-    AIKeywordGenerationRequest, AIKeywordGenerationResponse, AIUsageStatsResponse
+    AIKeywordGenerationRequest, AIKeywordGenerationResponse, AIUsageStatsResponse,
+    KeywordBulkDeleteRequest
 )
 
 router = APIRouter()
@@ -142,6 +143,32 @@ async def update_keyword(
         )
 
 
+@router.delete("/bulk")
+async def delete_keywords_bulk(
+    payload: KeywordBulkDeleteRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete multiple keywords in a single request"""
+    keyword_service = KeywordService(db)
+
+    keyword_ids = [kid for kid in payload.keyword_ids if kid]
+    if not keyword_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No keyword IDs provided"
+        )
+
+    deleted_count = keyword_service.remove_keywords_bulk(
+        str(current_user.id), keyword_ids
+    )
+
+    return {
+        "message": "Keywords deleted successfully",
+        "deleted_count": deleted_count
+    }
+
+
 @router.delete("/{keyword_id}")
 async def delete_keyword(
     keyword_id: str,
@@ -160,6 +187,31 @@ async def delete_keyword(
         )
     
     return {"message": "Keyword deleted successfully"}
+
+@router.delete("/bulk")
+async def delete_keywords_bulk(
+    payload: KeywordBulkDeleteRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete multiple keywords in a single request"""
+    keyword_service = KeywordService(db)
+
+    keyword_ids = [kid for kid in payload.keyword_ids if kid]
+    if not keyword_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No keyword IDs provided"
+        )
+
+    deleted_count = keyword_service.remove_keywords_bulk(
+        str(current_user.id), keyword_ids
+    )
+
+    return {
+        "message": "Keywords deleted successfully",
+        "deleted_count": deleted_count
+    }
 
 
 @router.get("/summary", response_model=KeywordSummaryResponse)

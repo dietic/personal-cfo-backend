@@ -104,11 +104,11 @@ class CategoryService:
     def create_default_categories(db: Session, user_id: uuid.UUID) -> List[Category]:
         """Create default categories for a new user (5 fixed categories for free users)"""
         default_categories = [
-            {"name": "Alimentación", "color": "#FF6B6B", "emoji": "🍕", "keywords": ["restaurante", "comida", "almuerzo", "desayuno", "cena", "café", "cafetería", "pizza", "hamburguesa", "supermercado", "mercado", "panadería", "carnicería", "delivery", "pedido"]},
-            {"name": "Salud", "color": "#DDA0DD", "emoji": "🏥", "keywords": ["doctor", "médico", "hospital", "clínica", "farmacia", "medicina", "dentista", "consulta", "receta", "seguro médico", "copago", "urgencias", "cirugía", "terapia", "laboratorio"]},
-            {"name": "Transporte", "color": "#4ECDC4", "emoji": "🚗", "keywords": ["gasolina", "combustible", "uber", "taxi", "bus", "metro", "tren", "estacionamiento", "peaje", "auto", "coche", "vehículo", "transporte", "bicicleta", "motocicleta"]},
-            {"name": "Vivienda", "color": "#F39C12", "emoji": "🏠", "keywords": ["alquiler", "arriendo", "hipoteca", "casa", "apartamento", "propiedad", "mantenimiento", "reparación", "seguro hogar", "administración", "inquilino", "propietario", "inmobiliaria", "mudanza", "muebles"]},
-            {"name": "Otros", "color": "#95A5A6", "emoji": "📦", "keywords": ["varios", "otros", "miscelaneos", "general", "no categorizado", "sin categoría", "indefinido", "vario"]},
+            {"name": "Alimentación", "color": "#FF6B6B", "emoji": "🍕", "keywords": ["la lucha", "norkys", "rokys", "bembos", "pizza hut", "san antonio", "tottus", "plazavea", "la iberica", "papa johns"]},
+            {"name": "Entretenimiento", "color": "#DDA0DD", "emoji": "🎬", "keywords": ["cineplanet", "cinépolis", "netflix", "spotify", "joinnus", "teleticket", "epic games", "steam", "claro video", "disney plus"]},
+            {"name": "Compras", "color": "#45B7D1", "emoji": "🛍️", "keywords": ["ripley", "saga falabella", "oechsle", "linio", "mercadolibre", "coolbox", "hiraoka", "casaideas", "miniso", "curacao"]},
+            {"name": "Vivienda", "color": "#F39C12", "emoji": "🏠", "keywords": ["pacifico seguros", "rimac seguros", "la positiva", "los portales", "decor center", "decorlux", "sodimac", "promart", "ferretti", "cassinelli"]},
+            {"name": "Otros", "color": "#95A5A6", "emoji": "📦", "keywords": ["serpost", "sunat", "reniec", "essalud", "inkafarma", "boticas peru", "western union", "claro peru", "entel peru", "movistar peru"]},
             # System category for income - should be hidden from management
             {"name": "Income", "color": "#4f46e5", "emoji": "💰", "keywords": ["ingreso", "salario", "pago", "sueldo", "ganancia", "renta", "dividendo", "bonificación", "comisión", "propina", "reembolso", "subsidio", "beca", "herencia", "regalo"], "is_system": True},
         ]
@@ -388,7 +388,7 @@ class CategoryService:
         return count >= 5
 
     @staticmethod
-    def validate_minimum_keywords(db: Session, user_id: uuid.UUID, min_keywords: int = 20) -> Dict[str, Any]:
+    def validate_minimum_keywords(db: Session, user_id: uuid.UUID, min_keywords: int = 12) -> Dict[str, Any]:
         """Check if all categories have at least the minimum number of keywords
 
         Returns:

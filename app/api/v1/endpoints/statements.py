@@ -20,7 +20,6 @@ from app.models.user import User
 from app.models.statement import Statement
 from app.models.transaction import Transaction
 from app.models.card import Card
-from app.models.alert import Alert, AlertType, AlertSeverity
 from app.schemas.statement import (
     StatementCreate,
     Statement as StatementSchema,
@@ -36,7 +35,6 @@ from app.schemas.statement import (
     UnlockPDFRequest,
     UnlockPDFResponse
 )
-from app.services.enhanced_statement_service import EnhancedStatementService
 from app.services.universal_statement_service import UniversalStatementService
 from app.services.pdf_service import PDFService
 from app.services.category_service import CategoryService
@@ -375,10 +373,11 @@ async def upload_statement(
     assert_within_limit(db, current_user, "statements")
 
     # Validate user has minimum categories before upload
-    try:
-        EnhancedStatementService.validate_statement_upload(db, current_user.id)
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    if not CategoryService.validate_minimum_categories(db, current_user.id):
+        raise HTTPException(
+            status_code=400,
+            detail="You must have at least 5 categories before uploading statements. Please create more categories in your profile settings."
+        )
 
     # Validate file type - only PDF allowed
     if not file.filename.lower().endswith('.pdf'):
