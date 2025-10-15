@@ -48,5 +48,5 @@ jobs:
           curl --fail --show-error --silent -X POST "$RENDER_CELERY_DEPLOY_HOOK"
 
       - name: Log manual dispatch reason
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.reason != ''
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.reason != '' }}
         run: echo "Manual deploy reason: ${{ github.event.inputs.reason }}"
