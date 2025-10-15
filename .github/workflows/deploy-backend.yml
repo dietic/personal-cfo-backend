@@ -14,7 +14,7 @@ on:
     inputs:
       reason:
         description: "Why are you deploying manually?"
-        required: false
+        required: true
         default: ""
 
 permissions:
