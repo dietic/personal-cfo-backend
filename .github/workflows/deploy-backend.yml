@@ -2,7 +2,7 @@ name: Deploy Backend (Render)
 
 on:
   push:
-    branches: [master]
+    branches: [ master ]
     paths:
       - "app/**"
       - "alembic/**"
@@ -10,26 +10,32 @@ on:
       - "Dockerfile"
       - "render.yaml"
       - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why are you deploying manually?"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-backend-deploy
+  cancel-in-progress: true
 
 jobs:
   deploy:
+    name: Trigger Render deploy hook (backend)
     runs-on: ubuntu-latest
-    steps:
-      - name: Trigger Render Deploy (backend)
-        run: |
-          curl -fsSL -X POST "$RENDER_DEPLOY_HOOK_BACKEND"
-        env:
-          RENDER_DEPLOY_HOOK_BACKEND: ${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}
-jobs:
-  deploy:
-    name: Trigger Render deploy hook
-    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Ensure deploy hook secret is set
         env:
-          RENDER_CELERY_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}
+          RENDER_BACKEND_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}
         run: |
-          if [ -z "$RENDER_BACKEND_DEPLOY_HOOK" ]; then
+          set -euo pipefail
+          if [ -z "${RENDER_BACKEND_DEPLOY_HOOK:-}" ]; then
             echo "RENDER_BACKEND_DEPLOY_HOOK secret is not set" >&2
             exit 1
           fi
@@ -38,10 +44,11 @@ jobs:
         env:
           RENDER_BACKEND_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}
         run: |
+          set -euo pipefail
           echo "Triggering Render deploy hook for backend..."
-          curl -fsSL -X POST "$RENDER_BACKEND_DEPLOY_HOOK"
+          curl --fail --show-error --silent -X POST "$RENDER_BACKEND_DEPLOY_HOOK"
 
       - name: Log manual dispatch reason
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.reason != ''
-        run: |
-          echo "Manual deploy reason: ${{ github.event.inputs.reason }}
+        run: echo "Manual deploy reason: ${{ github.event.inputs.reason }}"
+
