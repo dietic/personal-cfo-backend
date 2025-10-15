@@ -1,0 +1,47 @@
+name: Deploy Celery Worker to Render
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'app/api/**'
+      - 'Dockerfile'
+      - 'Dockerfile.render'
+      - 'deployment/**'
+      - 'docs/**'
+      - '.github/workflows/**'
+      - 'render.yaml'
+      - 'start_app.sh'
+      - 'tests/**'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Optional note for the manual deploy
+        required: false
+
+jobs:
+  trigger-deploy:
+    name: Trigger Render deploy hook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure deploy hook secret is set
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_CELERY_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "RENDER_CELERY_DEPLOY_HOOK secret is not set" >&2
+            exit 1
+          fi
+
+      - name: Trigger Render deploy hook
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_CELERY_DEPLOY_HOOK }}
+        run: |
+          echo "Triggering Render deploy hook for Celery worker..."
+          curl -fsSL -X POST "$RENDER_DEPLOY_HOOK"
+
+      - name: Log manual dispatch reason
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.reason != ''
+        run: |
+          echo "Manual deploy reason: ${{ github.event.inputs.reason }}"
