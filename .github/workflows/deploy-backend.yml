@@ -47,3 +47,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "Triggering Render deploy hook for Celery worker..."
+          curl --fail --show-error --silent -X POST "$RENDER_BACKEND_DEPLOY_HOOK"
+
+      - name: Log manual dispatch reason
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.reason != '' }}
+        shell: bash
+        run: |
+          echo "Manual deploy reason: ${{ github.event.inputs.reason }}"
