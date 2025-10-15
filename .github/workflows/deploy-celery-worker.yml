@@ -50,4 +50,3 @@ jobs:
       - name: Log manual dispatch reason
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.reason != ''
         run: echo "Manual deploy reason: ${{ github.event.inputs.reason }}"
-
