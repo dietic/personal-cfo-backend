@@ -21,5 +21,5 @@ COPY . .
 # Create uploads directory
 RUN mkdir -p uploads
 
-# Start Celery worker
-CMD ["celery", "-A", "app.core.celery_app.celery_app", "worker", "--loglevel=INFO", "-Q", "statements,priority,default"]
+# Start Celery worker with reduced concurrency for Render memory limits
+CMD ["celery", "-A", "app.core.celery_app.celery_app", "worker", "--loglevel=INFO", "-Q", "statements,priority,default", "--concurrency=2"]
