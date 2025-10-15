@@ -1,0 +1,47 @@
+name: Deploy Backend (Render)
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "app/**"
+      - "alembic/**"
+      - "requirements.txt"
+      - "Dockerfile"
+      - "render.yaml"
+      - ".github/workflows/deploy-backend.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy (backend)
+        run: |
+          curl -fsSL -X POST "$RENDER_DEPLOY_HOOK_BACKEND"
+        env:
+          RENDER_DEPLOY_HOOK_BACKEND: ${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}
+jobs:
+  deploy:
+    name: Trigger Render deploy hook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure deploy hook secret is set
+        env:
+          RENDER_CELERY_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$RENDER_BACKEND_DEPLOY_HOOK" ]; then
+            echo "RENDER_BACKEND_DEPLOY_HOOK secret is not set" >&2
+            exit 1
+          fi
+
+      - name: Trigger Render deploy hook
+        env:
+          RENDER_BACKEND_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}
+        run: |
+          echo "Triggering Render deploy hook for backend..."
+          curl -fsSL -X POST "$RENDER_BACKEND_DEPLOY_HOOK"
+
+      - name: Log manual dispatch reason
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.reason != ''
+        run: |
+          echo "Manual deploy reason: ${{ github.event.inputs.reason }}
