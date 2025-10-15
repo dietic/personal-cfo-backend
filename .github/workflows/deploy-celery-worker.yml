@@ -1,9 +1,8 @@
-
 name: Deploy Celery Worker to Render
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
     paths:
       - "app/celery/**"
       - "requirements.txt"
@@ -32,6 +31,7 @@ jobs:
       - name: Ensure deploy hook secret is set
         env:
           RENDER_CELERY_DEPLOY_HOOK: ${{ secrets.RENDER_CELERY_DEPLOY_HOOK }}
+        shell: bash
         run: |
           set -euo pipefail
           if [ -z "${RENDER_CELERY_DEPLOY_HOOK:-}" ]; then
@@ -42,6 +42,7 @@ jobs:
       - name: Trigger Render deploy hook
         env:
           RENDER_CELERY_DEPLOY_HOOK: ${{ secrets.RENDER_CELERY_DEPLOY_HOOK }}
+        shell: bash
         run: |
           set -euo pipefail
           echo "Triggering Render deploy hook for Celery worker..."
@@ -49,4 +50,6 @@ jobs:
 
       - name: Log manual dispatch reason
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.reason != '' }}
-        run: echo "Manual deploy reason: ${{ github.event.inputs.reason }}"
+        shell: bash
+        run: |
+          echo "Manual deploy reason: ${{ github.event.inputs.reason }}"
